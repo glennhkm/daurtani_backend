@@ -2,9 +2,10 @@ import { Request, Response } from "express";
 import response from "../libs/utils/responses";
 import supabase from "../libs/supabase/client";
 import { User } from "../models/userModel";
+import "dotenv/config";
 
 const loginOAuth = async (req: Request, res: Response): Promise<void> => {
-  const redirectTo = "http://localhost:4000/auth/callback";
+  const redirectTo = process.env.REDIRECT_OAUTH_URL;
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
