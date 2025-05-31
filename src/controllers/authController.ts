@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import response from "../libs/utils/responses";
 import supabase from "../libs/supabase/client";
-import {  User } from "../models/User";
+import { User } from "../models/userModel";
 
 const loginOAuth = async (req: Request, res: Response): Promise<void> => {
   const redirectTo = "http://localhost:4000/auth/callback";
@@ -62,7 +62,6 @@ const login = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-
 const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const { fullName, email, password, phoneNumber } = req.body;
@@ -74,8 +73,8 @@ const register = async (req: Request, res: Response): Promise<void> => {
         data: {
           full_name: fullName,
           phone_number: phoneNumber,
-        }
-      }
+        },
+      },
     });
 
     if (error) {
@@ -91,7 +90,7 @@ const register = async (req: Request, res: Response): Promise<void> => {
       email,
       phoneNumber,
       accessToken: registUser.session?.access_token,
-      refreshToken: registUser.session?.refresh_token,      
+      refreshToken: registUser.session?.refresh_token,
     });
 
     return response.sendCreated(res, { data: createdUser });
@@ -101,8 +100,39 @@ const register = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+const successOAuth = async (req: Request, res: Response): Promise<void> => {
+  const { email, accessToken, refreshToken, fullName, phoneNumber } = req.body;
+  // console.log(data);
+  try {
+    const authenticatedUser = await User.findOneAndUpdate(
+      { email: email },
+      {
+        $set: {
+          accessToken,
+          refreshToken,
+        },
+        $setOnInsert: {
+          fullName,
+          phoneNumber: phoneNumber || "",
+          email,
+        },
+      },
+      {
+        new: true,
+        upsert: true,
+        setDefaultsOnInsert: true,
+      }
+    );
+    return response.sendSuccess(res, { data: authenticatedUser });
+  } catch (error) {
+    console.error("Unexpected successOAuth error:", error);
+    return response.sendInternalError(res, error);
+  }
+};
+
 export default {
   loginOAuth,
   login,
   register,
+  successOAuth,
 };

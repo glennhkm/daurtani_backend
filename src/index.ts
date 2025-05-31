@@ -3,6 +3,10 @@ import cors from "cors"; // 🔹 Import cors
 import { connectDB } from "./libs/utils/db";
 import userRouter from "./routers/userRouter";
 import authRouter from "./routers/authRouter";
+import farmWasteRouter from "./routers/farmWasteRouter";
+import storeRouter from "./routers/storeRouter";
+import unitPriceRouter from "./routers/unitPriceRouter";
+import cartRouter from "./routers/cartRouter";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -39,6 +43,10 @@ connectDB();
 
 app.use("/auth", authRouter);
 app.use("/users", userRouter);
+app.use("/farm-wastes", farmWasteRouter);
+app.use("/stores", storeRouter);
+app.use("/unit-prices", unitPriceRouter);
+app.use("/cart", cartRouter);
 
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);

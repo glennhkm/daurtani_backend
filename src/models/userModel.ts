@@ -21,7 +21,7 @@ const UserSchema: Schema = new Schema<IUser>({
   },
   accessToken: { type: String, required: false },
   refreshToken: { type: String, required: false },
-  phoneNumber: { type: String, required: true },
+  phoneNumber: { type: String, required: false },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
