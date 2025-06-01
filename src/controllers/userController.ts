@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { User } from '../models/userModel';
 import response from '../libs/utils/responses';
+import { AuthRequest } from './storeController';
 
 const createUser = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -31,8 +32,29 @@ const getAllUsers = async (_req: Request, res: Response): Promise<void> => {
   }
 };
 
+const getUserById = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = await User.findById(req.user?.id);
+    response.sendSuccess(res, { user });
+  } catch (error) {
+    response.sendInternalError(res, { error });
+  }
+};
+
+const updateUser = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { fullName, phoneNumber } = req.body;
+    const user = await User.findByIdAndUpdate(req.user?.id, { fullName, phoneNumber }, { new: true });
+    response.sendSuccess(res, { user });
+  } catch (error) {
+    response.sendInternalError(res, { error });
+  }
+};
+
 
 export default {
   createUser,
   getAllUsers,
+  getUserById,
+  updateUser,
 };

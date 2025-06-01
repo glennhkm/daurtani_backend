@@ -7,6 +7,7 @@ import farmWasteRouter from "./routers/farmWasteRouter";
 import storeRouter from "./routers/storeRouter";
 import unitPriceRouter from "./routers/unitPriceRouter";
 import cartRouter from "./routers/cartRouter";
+import reviewRouter from "./routers/reviewRouter";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -47,6 +48,7 @@ app.use("/farm-wastes", farmWasteRouter);
 app.use("/stores", storeRouter);
 app.use("/unit-prices", unitPriceRouter);
 app.use("/cart", cartRouter);
+app.use("/reviews", reviewRouter);
 
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);

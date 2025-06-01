@@ -6,7 +6,7 @@ import mongoose from "mongoose";
 import response from "../libs/utils/responses";
 
 // Define AuthRequest interface to include user property
-interface AuthRequest extends Request {
+export interface AuthRequest extends Request {
   user?: {
     id: string;
     email: string;
@@ -18,18 +18,26 @@ interface AuthRequest extends Request {
 // // Create a new store
 const createStore = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { storeAddressId, storeName, description } = req.body;
+    const { storeName, storeAddress, description, whatsAppNumber, instagram, facebook, officialWebsite } = req.body;
     const ownerId = req.user?.id; // Get user ID from authenticated request
     
     if (!ownerId) {
       return response.sendUnauthorized(res, "User not authenticated");
     }
 
+    if (!storeName || !storeAddress) {
+      return response.sendBadRequest(res, "Store name and address are required");
+    }
+
     const newStore = await Store.create({
-      storeAddressId,
       ownerId,
       storeName,
+      storeAddress,
       description,
+      whatsAppNumber,
+      instagram,
+      facebook,
+      officialWebsite,
       averageRating: 0,
     });
 
@@ -102,7 +110,7 @@ const getStoreProducts = async (req: AuthRequest, res: Response): Promise<void> 
     if (!stores || stores.length === 0) {
       response.sendSuccess(res, {
         data: [],
-        message: "No stores found for this user",
+        message: "Tidak ada toko yang ditemukan",
       });
       return;
     }
@@ -139,6 +147,11 @@ const getStoreProducts = async (req: AuthRequest, res: Response): Promise<void> 
           wasteName: waste.wasteName,
           description: waste.description,
           averageRating: waste.averageRating,
+          storeAddress: storeItem.storeAddress,
+          whatsAppNumber: storeItem.whatsAppNumber,
+          instagram: storeItem.instagram,
+          facebook: storeItem.facebook,
+          officialWebsite: storeItem.officialWebsite,
           imageUrls: waste.imageUrls,
           createdAt: waste.createdAt,
           updatedAt: waste.updatedAt,
@@ -177,42 +190,58 @@ const getStoreProducts = async (req: AuthRequest, res: Response): Promise<void> 
 };
 
 // // Update a store
-// const updateStore = async (req: Request, res: Response): Promise<void> => {
-//   try {
-//     const { id } = req.params;
-//     const { storeName, description } = req.body;
+const updateStore = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { storeName, storeAddress, description, whatsAppNumber, instagram, facebook, officialWebsite } = req.body;
+    const userId = req.user?.id;
 
-//     if (!mongoose.Types.ObjectId.isValid(id)) {
-//       response.sendBadRequest(res, "Invalid store ID");
-//       return;
-//     }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      response.sendBadRequest(res, "Invalid store ID");
+      return;
+    }
 
-//     const store = await Store.findById(id);
+    const store = await Store.findById(id);
     
-//     if (!store) {
-//       response.sendNotFound(res, "Store not found");
-//       return;
-//     }
+    if (!store) {
+      response.sendNotFound(res, "Toko tidak ditemukan");
+      return;
+    }
 
-//     const updatedStore = await Store.findByIdAndUpdate(
-//       id,
-//       {
-//         storeName,
-//         description,
-//         updatedAt: new Date(),
-//       },
-//       { new: true }
-//     );
+    // Check if the user is the owner of the store    
+    if (store.ownerId.toString() !== userId?.toString()) {
+      response.sendUnauthorized(res, "Hanya pemilik toko yang dapat mengubah data toko");
+      return;
+    }
 
-//     response.sendSuccess(res, {
-//       data: updatedStore,
-//       message: "Store updated successfully",
-//     });
-//   } catch (error: any) {
-//     console.error("Error updating store:", error);
-//     response.sendInternalError(res, error.message || "Failed to update store");
-//   }
-// };
+    if (!storeName || !storeAddress) {
+      return response.sendBadRequest(res, "Nama toko dan alamat toko diperlukan");
+    }
+
+    const updatedStore = await Store.findByIdAndUpdate(
+      id,
+      {
+        storeName,
+        storeAddress,
+        description,
+        whatsAppNumber,
+        instagram,
+        facebook,
+        officialWebsite,
+        updatedAt: new Date(),
+      },
+      { new: true }
+    );
+
+    response.sendSuccess(res, {
+      data: updatedStore,
+      message: "Store updated successfully",
+    });
+  } catch (error: any) {
+    console.error("Error updating store:", error);
+    response.sendInternalError(res, error.message || "Failed to update store");
+  }
+};
 
 // // Delete a store
 // const deleteStore = async (req: Request, res: Response): Promise<void> => {
@@ -258,7 +287,7 @@ export default {
   // getAllStores,
   // getStoreById,
   getStoreProducts,
-  // updateStore,
+  updateStore,
   // deleteStore,
 };
 

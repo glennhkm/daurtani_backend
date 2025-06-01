@@ -17,7 +17,7 @@ storeRouter.get("/products", middleware.authorization, storeController.getStoreP
 storeRouter.post("/", middleware.authorization, storeController.createStore);
 
 // // Update a store
-// storeRouter.put("/:id", (req: Request, res: Response) => storeController.updateStore(req, res));
+storeRouter.put("/:id", middleware.authorization, storeController.updateStore);
 
 // // Delete a store
 // storeRouter.delete("/:id", (req: Request, res: Response) => storeController.deleteStore(req, res));
