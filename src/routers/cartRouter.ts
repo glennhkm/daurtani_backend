@@ -1,21 +1,22 @@
 import { Router, Request, Response } from "express";
 import cartController from "../controllers/cartController";
+import middleware from "../libs/utils/middleware";
 
 const router = Router();
 
 // Get user's cart
-router.get("/user/:userId", (req: Request, res: Response) => cartController.getUserCart(req, res));
+router.get("/", middleware.authorization, (req: Request, res: Response) => cartController.getUserCart(req, res));
 
 // Add item to cart
-router.post("/user/:userId/add", (req: Request, res: Response) => cartController.addItemToCart(req, res));
+router.post("/add", middleware.authorization, (req: Request, res: Response) => cartController.addItemToCart(req, res));
 
 // Update cart item
-router.put("/item/:itemId", (req: Request, res: Response) => cartController.updateCartItem(req, res));
+router.put("/item/:itemId", middleware.authorization, (req: Request, res: Response) => cartController.updateCartItem(req, res));
 
 // Remove item from cart
-router.delete("/item/:itemId", (req: Request, res: Response) => cartController.removeCartItem(req, res));
+router.delete("/item/:itemId", middleware.authorization, (req: Request, res: Response) => cartController.removeCartItem(req, res));
 
 // Clear cart
-router.delete("/user/:userId/clear", (req: Request, res: Response) => cartController.clearCart(req, res));
+router.delete("/clear", middleware.authorization, (req: Request, res: Response) => cartController.clearCart(req, res));
 
 export default router; 

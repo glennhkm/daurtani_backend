@@ -15,24 +15,38 @@ export interface AuthRequest extends Request {
   };
 }
 
-// // Create a new store
+// Create a new store
 const createStore = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { storeName, storeAddress, description, whatsAppNumber, instagram, facebook, officialWebsite } = req.body;
+    const { 
+      storeName, 
+      provinsi, 
+      kota, 
+      kecamatan, 
+      detailAlamat, 
+      description, 
+      whatsAppNumber, 
+      instagram, 
+      facebook, 
+      officialWebsite 
+    } = req.body;
     const ownerId = req.user?.id; // Get user ID from authenticated request
     
     if (!ownerId) {
       return response.sendUnauthorized(res, "User not authenticated");
     }
 
-    if (!storeName || !storeAddress) {
-      return response.sendBadRequest(res, "Store name and address are required");
+    if (!storeName) {
+      return response.sendBadRequest(res, "Store name is required");
     }
 
     const newStore = await Store.create({
       ownerId,
       storeName,
-      storeAddress,
+      provinsi,
+      kota,
+      kecamatan,
+      detailAlamat,
       description,
       whatsAppNumber,
       instagram,
@@ -147,7 +161,10 @@ const getStoreProducts = async (req: AuthRequest, res: Response): Promise<void> 
           wasteName: waste.wasteName,
           description: waste.description,
           averageRating: waste.averageRating,
-          storeAddress: storeItem.storeAddress,
+          provinsi: storeItem.provinsi,
+          kota: storeItem.kota,
+          kecamatan: storeItem.kecamatan,
+          detailAlamat: storeItem.detailAlamat,
           whatsAppNumber: storeItem.whatsAppNumber,
           instagram: storeItem.instagram,
           facebook: storeItem.facebook,
@@ -193,7 +210,18 @@ const getStoreProducts = async (req: AuthRequest, res: Response): Promise<void> 
 const updateStore = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { storeName, storeAddress, description, whatsAppNumber, instagram, facebook, officialWebsite } = req.body;
+    const { 
+      storeName, 
+      provinsi, 
+      kota, 
+      kecamatan, 
+      detailAlamat, 
+      description, 
+      whatsAppNumber, 
+      instagram, 
+      facebook, 
+      officialWebsite 
+    } = req.body;
     const userId = req.user?.id;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -214,15 +242,18 @@ const updateStore = async (req: AuthRequest, res: Response): Promise<void> => {
       return;
     }
 
-    if (!storeName || !storeAddress) {
-      return response.sendBadRequest(res, "Nama toko dan alamat toko diperlukan");
+    if (!storeName) {
+      return response.sendBadRequest(res, "Nama toko diperlukan");
     }
 
     const updatedStore = await Store.findByIdAndUpdate(
       id,
       {
         storeName,
-        storeAddress,
+        provinsi,
+        kota,
+        kecamatan,
+        detailAlamat,
         description,
         whatsAppNumber,
         instagram,

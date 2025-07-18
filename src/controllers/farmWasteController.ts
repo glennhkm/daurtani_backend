@@ -114,7 +114,10 @@ const getAllFarmWastes = async (req: Request, res: Response): Promise<void> => {
         store: {
           _id: store?._id,
           storeName: store?.storeName,
-          storeAddress: store?.storeAddress,
+          provinsi: store?.provinsi,
+          kota: store?.kota,
+          kecamatan: store?.kecamatan,
+          detailAlamat: store?.detailAlamat,
         },
         unitPrices: wasteUnitPrices.map(price => ({
           _id: price._id,
@@ -174,7 +177,10 @@ const getFarmWasteById = async (req: Request, res: Response): Promise<void> => {
           _id: store?._id,
           storeName: store?.storeName,
           averageRating: store?.averageRating,
-          storeAddress: store?.storeAddress,
+          provinsi: store?.provinsi,
+          kota: store?.kota,
+          kecamatan: store?.kecamatan,
+          detailAlamat: store?.detailAlamat,
           whatsAppNumber: store?.whatsAppNumber,
           instagram: store?.instagram,
           facebook: store?.facebook,

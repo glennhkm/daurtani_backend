@@ -7,14 +7,23 @@ import { Store } from "../models/storeModel";
 import mongoose from "mongoose";
 import response from "../libs/utils/responses";
 
-// Get or create user's cart
-const getUserCart = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { userId } = req.params;
+// Define AuthRequest interface to include user property
+export interface AuthRequest extends Request {
+  user?: {
+    id: string;
+    email: string;
+    fullName: string;
+    supabaseId: string;
+  };
+}
 
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      response.sendBadRequest(res, "Invalid user ID");
-      return;
+// Get or create user's cart
+const getUserCart = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return response.sendUnauthorized(res, "User not authenticated");
     }
 
     // Find or create cart
@@ -60,18 +69,26 @@ const getUserCart = async (req: Request, res: Response): Promise<void> => {
           totalPriceItem: item.totalPriceItem,
           createdAt: item.createdAt,
           updatedAt: item.updatedAt,
-          farmWaste: {
+          product: {
             _id: farmWaste?._id,
             wasteName: farmWaste?.wasteName,
             description: farmWaste?.description,
+            imageUrls: farmWaste?.imageUrls || [],
+            averageRating: farmWaste?.averageRating || 0,
           },
           store: {
             _id: store?._id,
             storeName: store?.storeName,
+            provinsi: store?.provinsi,
+            kota: store?.kota,
+            kecamatan: store?.kecamatan,
+            detailAlamat: store?.detailAlamat,
           },
           unitPrice: {
             _id: unitPrice?._id,
             unit: unitPrice?.unit,
+            pricePerUnit: unitPrice?.pricePerUnit,
+            stock: unitPrice?.stock,
             isBaseUnit: unitPrice?.isBaseUnit,
             equalWith: unitPrice?.equalWith,
           },
@@ -86,15 +103,9 @@ const getUserCart = async (req: Request, res: Response): Promise<void> => {
     );
 
     response.sendSuccess(res, {
-      data: {
-        _id: cart._id,
-        userId: cart.userId,
-        createdAt: cart.createdAt,
-        updatedAt: cart.updatedAt,
-        items: cartItemsWithDetails,
-        totalPrice,
-        itemCount: cartItemsWithDetails.length,
-      },
+      data: cartItemsWithDetails,
+      totalItems: cartItemsWithDetails.length,
+      totalPrice: totalPrice,
       message: "Cart retrieved successfully",
     });
   } catch (error: any) {
@@ -104,14 +115,13 @@ const getUserCart = async (req: Request, res: Response): Promise<void> => {
 };
 
 // Add item to cart
-const addItemToCart = async (req: Request, res: Response): Promise<void> => {
+const addItemToCart = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { userId } = req.params;
+    const userId = req.user?.id;
     const { farmWasteId, unitsPriceId, quantity } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      response.sendBadRequest(res, "Invalid user ID");
-      return;
+    if (!userId) {
+      return response.sendUnauthorized(res, "User not authenticated");
     }
 
     // Validate farm waste and unit price
@@ -280,13 +290,12 @@ const removeCartItem = async (req: Request, res: Response): Promise<void> => {
 };
 
 // Clear cart
-const clearCart = async (req: Request, res: Response): Promise<void> => {
+const clearCart = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { userId } = req.params;
+    const userId = req.user?.id;
 
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      response.sendBadRequest(res, "Invalid user ID");
-      return;
+    if (!userId) {
+      return response.sendUnauthorized(res, "User not authenticated");
     }
 
     // Find user's cart

@@ -43,8 +43,19 @@ const getUserById = async (req: AuthRequest, res: Response): Promise<void> => {
 
 const updateUser = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { fullName, phoneNumber } = req.body;
-    const user = await User.findByIdAndUpdate(req.user?.id, { fullName, phoneNumber }, { new: true });
+    const { fullName, phoneNumber, provinsi, kota, kecamatan, detailAlamat } = req.body;
+    const user = await User.findByIdAndUpdate(
+      req.user?.id, 
+      { 
+        fullName, 
+        phoneNumber, 
+        provinsi, 
+        kota, 
+        kecamatan, 
+        detailAlamat 
+      }, 
+      { new: true }
+    );
     response.sendSuccess(res, { user });
   } catch (error) {
     response.sendInternalError(res, { error });

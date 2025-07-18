@@ -6,6 +6,19 @@ export interface IUser extends Document {
   phoneNumber?: string;
   accessToken?: string;
   refreshToken?: string;
+  provinsi?: {
+    id: number;
+    name: string;
+  };
+  kota?: {
+    id: number;
+    name: string;
+  };
+  kecamatan?: {
+    id: number;
+    name: string;
+  };
+  detailAlamat?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -22,6 +35,28 @@ const UserSchema: Schema = new Schema<IUser>({
   accessToken: { type: String, required: false },
   refreshToken: { type: String, required: false },
   phoneNumber: { type: String, required: false },
+  provinsi: {
+    type: {
+      id: { type: Number, required: true },
+      name: { type: String, required: true }
+    },
+    required: false
+  },
+  kota: {
+    type: {
+      id: { type: Number, required: true },
+      name: { type: String, required: true }
+    },
+    required: false
+  },
+  kecamatan: {
+    type: {
+      id: { type: Number, required: true },
+      name: { type: String, required: true }
+    },
+    required: false
+  },
+  detailAlamat: { type: String, required: false },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
