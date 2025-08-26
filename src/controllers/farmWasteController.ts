@@ -17,10 +17,13 @@ const createFarmWaste = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    const slug = wasteName.toLowerCase().replace(/\s+/g, "-");
+
     // Create farm waste
     const newFarmWaste = await FarmWaste.create({
       storeId,
       wasteName,
+      slug,
       description,
       imageUrls: imageUrls || [],
       averageRating: 0,
@@ -106,6 +109,7 @@ const getAllFarmWastes = async (req: Request, res: Response): Promise<void> => {
       return {
         _id: waste._id,
         wasteName: waste.wasteName,
+        slug: waste.slug,
         description: waste.description,
         imageUrls: waste.imageUrls,
         averageRating: waste.averageRating,
@@ -169,6 +173,64 @@ const getFarmWasteById = async (req: Request, res: Response): Promise<void> => {
         _id: farmWaste._id,
         wasteName: farmWaste.wasteName,
         description: farmWaste.description,
+        imageUrls: farmWaste.imageUrls,
+        averageRating: farmWaste.averageRating,
+        createdAt: farmWaste.createdAt,
+        updatedAt: farmWaste.updatedAt,
+        store: {
+          _id: store?._id,
+          storeName: store?.storeName,
+          averageRating: store?.averageRating,
+          provinsi: store?.provinsi,
+          kota: store?.kota,
+          kecamatan: store?.kecamatan,
+          detailAlamat: store?.detailAlamat,
+          whatsAppNumber: store?.whatsAppNumber,
+          instagram: store?.instagram,
+          facebook: store?.facebook,
+          officialWebsite: store?.officialWebsite,
+        },
+        unitPrices: unitPrices.map(price => ({
+          _id: price._id,
+          unit: price.unit,
+          pricePerUnit: price.pricePerUnit,
+          isBaseUnit: price.isBaseUnit,
+          stock: price.stock,
+          equalWith: price.equalWith,
+        })),
+      },
+      message: "Farm waste retrieved successfully",
+    });
+  } catch (error: any) {
+    console.error("Error fetching farm waste:", error);
+    response.sendInternalError(res, error.message || "Failed to fetch farm waste");
+  }
+};
+
+// Get a single farm waste product by slug
+const getFarmWasteBySlug = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { slug } = req.params;
+
+    const farmWaste = await FarmWaste.findOne({ slug });
+    
+    if (!farmWaste) {
+      response.sendNotFound(res, "Farm waste not found");
+      return;
+    }
+
+    // Get unit prices for this farm waste
+    const unitPrices = await UnitPrice.find({ farmWasteId: farmWaste._id });
+    
+    // Get store information
+    const store = await Store.findById(farmWaste.storeId);
+
+    response.sendSuccess(res, {
+      data: {
+        _id: farmWaste._id,
+        wasteName: farmWaste.wasteName,
+        description: farmWaste.description,
+        slug: farmWaste.slug,
         imageUrls: farmWaste.imageUrls,
         averageRating: farmWaste.averageRating,
         createdAt: farmWaste.createdAt,
@@ -318,6 +380,7 @@ export default {
   createFarmWaste,
   getAllFarmWastes,
   getFarmWasteById,
+  getFarmWasteBySlug,
   updateFarmWaste,
   deleteFarmWaste,
 };

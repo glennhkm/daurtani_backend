@@ -4,6 +4,7 @@ export interface IFarmWaste extends Document {
   storeId: Types.ObjectId;
   wasteName: string;
   description?: string;
+  slug: string;
   imageUrls: string[];
   averageRating?: number;
   createdAt: Date;
@@ -13,6 +14,7 @@ export interface IFarmWaste extends Document {
 const FarmWasteSchema: Schema = new Schema<IFarmWaste>({
   storeId: { type: Schema.Types.ObjectId, ref: "Store", required: true },
   wasteName: { type: String, required: true },
+  slug: { type: String, required: true, unique: true },
   description: { type: String },
   imageUrls: { type: [String], default: [] },
   averageRating: { type: Number },

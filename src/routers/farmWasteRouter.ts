@@ -6,8 +6,8 @@ const router = Router();
 // Get all farm wastes
 router.get("/", farmWasteController.getAllFarmWastes);
 
-// Get a single farm waste by ID
-router.get("/:id", farmWasteController.getFarmWasteById);
+// Get a single farm waste by slug
+router.get("/:slug", farmWasteController.getFarmWasteBySlug);
 
 // Create a new farm waste
 router.post("/", farmWasteController.createFarmWaste);
