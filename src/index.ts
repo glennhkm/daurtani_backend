@@ -8,6 +8,8 @@ import storeRouter from "./routers/storeRouter";
 import unitPriceRouter from "./routers/unitPriceRouter";
 import cartRouter from "./routers/cartRouter";
 import reviewRouter from "./routers/reviewRouter";
+import categoryRouter from "./routers/categoryRouter";
+import categoryGroupRouter from "./routers/categoryGroupRouter";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -49,6 +51,8 @@ app.use("/stores", storeRouter);
 app.use("/unit-prices", unitPriceRouter);
 app.use("/cart", cartRouter);
 app.use("/reviews", reviewRouter);
+app.use("/categories", categoryRouter);
+app.use("/category-groups", categoryGroupRouter);
 
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);

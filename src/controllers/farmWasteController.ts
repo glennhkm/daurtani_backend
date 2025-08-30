@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { FarmWaste } from "../models/farmWasteModel";
 import { UnitPrice } from "../models/unitPriceModel";
 import { Store } from "../models/storeModel";
+import { Category } from "../models/categoryModel";
 import mongoose from "mongoose";
 import response from "../libs/utils/responses";
 import { CartItem } from "../models/cartItemModel";
@@ -10,7 +11,7 @@ import { Review } from "../models/reviewModel";
 // Create a new farm waste product
 const createFarmWaste = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { storeId, wasteName, description, unitPrices, imageUrls } = req.body;
+    const { storeId, wasteName, description, unitPrices, imageUrls, categoryIds } = req.body;
 
     // Validate store exists
     const storeExists = await Store.findById(storeId);
@@ -29,6 +30,7 @@ const createFarmWaste = async (req: Request, res: Response): Promise<void> => {
       description,
       imageUrls: imageUrls || [],
       averageRating: 0,
+      categories: categoryIds || [],
     });
 
     // Add unit prices if provided
@@ -105,7 +107,13 @@ const getAllFarmWastes = async (req: Request, res: Response): Promise<void> => {
       _id: { $in: storeIds },
     });
 
-    // Map farm wastes with their unit prices and store info
+    // Get categories for these farm wastes
+    const allCategoryIds = farmWastes.flatMap((waste) => waste.categories || []);
+    const categories = await Category.find({
+      _id: { $in: allCategoryIds },
+    });
+
+    // Map farm wastes with their unit prices, store info, and categories
     const farmWastesWithDetails = farmWastes.map((waste) => {
       const wasteUnitPrices = unitPrices.filter(
         (price) =>
@@ -117,6 +125,12 @@ const getAllFarmWastes = async (req: Request, res: Response): Promise<void> => {
         (store) =>
           (store._id as mongoose.Types.ObjectId).toString() ===
           waste.storeId.toString()
+      );
+
+      const wasteCategories = categories.filter((category) =>
+        waste.categories?.some(
+          (catId) => catId.toString() === (category._id as mongoose.Types.ObjectId).toString()
+        )
       );
 
       return {
@@ -136,6 +150,10 @@ const getAllFarmWastes = async (req: Request, res: Response): Promise<void> => {
           kecamatan: store?.kecamatan,
           detailAlamat: store?.detailAlamat,
         },
+        categories: wasteCategories.map((category) => ({
+          _id: category._id,
+          name: category.name,
+        })),
         unitPrices: wasteUnitPrices.map((price) => ({
           _id: price._id,
           unit: price.unit,
@@ -184,6 +202,11 @@ const getFarmWasteById = async (req: Request, res: Response): Promise<void> => {
     // Get store information
     const store = await Store.findById(farmWaste.storeId);
 
+    // Get categories for this farm waste
+    const categories = await Category.find({
+      _id: { $in: farmWaste.categories || [] },
+    });
+
     response.sendSuccess(res, {
       data: {
         _id: farmWaste._id,
@@ -206,6 +229,10 @@ const getFarmWasteById = async (req: Request, res: Response): Promise<void> => {
           facebook: store?.facebook,
           officialWebsite: store?.officialWebsite,
         },
+        categories: categories.map((category) => ({
+          _id: category._id,
+          name: category.name,
+        })),
         unitPrices: unitPrices.map((price) => ({
           _id: price._id,
           unit: price.unit,
@@ -247,6 +274,11 @@ const getFarmWasteBySlug = async (
     // Get store information
     const store = await Store.findById(farmWaste.storeId);
 
+    // Get categories for this farm waste
+    const categories = await Category.find({
+      _id: { $in: farmWaste.categories || [] },
+    });
+
     response.sendSuccess(res, {
       data: {
         _id: farmWaste._id,
@@ -270,6 +302,10 @@ const getFarmWasteBySlug = async (
           facebook: store?.facebook,
           officialWebsite: store?.officialWebsite,
         },
+        categories: categories.map((category) => ({
+          _id: category._id,
+          name: category.name,
+        })),
         unitPrices: unitPrices.map((price) => ({
           _id: price._id,
           unit: price.unit,

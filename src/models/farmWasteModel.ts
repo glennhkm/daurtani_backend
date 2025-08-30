@@ -8,6 +8,7 @@ export interface IFarmWaste extends Document {
   imageUrls: string[];
   averageRating?: number;
   createdAt: Date;
+  categories?: Types.ObjectId[];
   updatedAt: Date;
 }
 
@@ -19,7 +20,11 @@ const FarmWasteSchema: Schema = new Schema<IFarmWaste>({
   imageUrls: { type: [String], default: [] },
   averageRating: { type: Number },
   createdAt: { type: Date, default: Date.now },
+  categories: [{ type: Schema.Types.ObjectId, default: [], ref: "Category" }],
   updatedAt: { type: Date, default: Date.now },
 });
 
-export const FarmWaste = mongoose.model<IFarmWaste>("FarmWaste", FarmWasteSchema);
+export const FarmWaste = mongoose.model<IFarmWaste>(
+  "FarmWaste",
+  FarmWasteSchema
+);
