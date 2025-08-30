@@ -4,6 +4,8 @@ import { UnitPrice } from "../models/unitPriceModel";
 import { Store } from "../models/storeModel";
 import mongoose from "mongoose";
 import response from "../libs/utils/responses";
+import { CartItem } from "../models/cartItemModel";
+import { Review } from "../models/reviewModel";
 
 // Create a new farm waste product
 const createFarmWaste = async (req: Request, res: Response): Promise<void> => {
@@ -32,7 +34,7 @@ const createFarmWaste = async (req: Request, res: Response): Promise<void> => {
     // Add unit prices if provided
     if (unitPrices && Array.isArray(unitPrices)) {
       // Validate that at least one base unit is provided
-      const hasBaseUnit = unitPrices.some(unit => unit.isBaseUnit === true);
+      const hasBaseUnit = unitPrices.some((unit) => unit.isBaseUnit === true);
       if (!hasBaseUnit) {
         await FarmWaste.findByIdAndDelete(newFarmWaste._id);
         response.sendBadRequest(res, "At least one base unit must be provided");
@@ -40,13 +42,15 @@ const createFarmWaste = async (req: Request, res: Response): Promise<void> => {
       }
 
       // Create unit prices
-      const unitPricePromises = unitPrices.map(unit => {
+      const unitPricePromises = unitPrices.map((unit) => {
         // If it's a base unit, equalWith should be 1
         if (unit.isBaseUnit) {
           unit.equalWith = 1;
         } else if (!unit.equalWith || unit.equalWith <= 0) {
           // Non-base units must have equalWith value
-          throw new Error(`Unit ${unit.unit} must have a valid equalWith value`);
+          throw new Error(
+            `Unit ${unit.unit} must have a valid equalWith value`
+          );
         }
 
         return UnitPrice.create({
@@ -64,7 +68,9 @@ const createFarmWaste = async (req: Request, res: Response): Promise<void> => {
 
     // Return the created farm waste with its unit prices
     const farmWasteWithUnits = await FarmWaste.findById(newFarmWaste._id);
-    const unitPricesData = await UnitPrice.find({ farmWasteId: newFarmWaste._id });
+    const unitPricesData = await UnitPrice.find({
+      farmWasteId: newFarmWaste._id,
+    });
 
     response.sendCreated(res, {
       data: {
@@ -75,7 +81,10 @@ const createFarmWaste = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error: any) {
     console.error("Error creating farm waste:", error);
-    response.sendInternalError(res, error.message || "Failed to create farm waste");
+    response.sendInternalError(
+      res,
+      error.message || "Failed to create farm waste"
+    );
   }
 };
 
@@ -83,29 +92,33 @@ const createFarmWaste = async (req: Request, res: Response): Promise<void> => {
 const getAllFarmWastes = async (req: Request, res: Response): Promise<void> => {
   try {
     const farmWastes = await FarmWaste.find().sort({ createdAt: -1 });
-    
+
     // Get all unit prices for these farm wastes
-    const farmWasteIds = farmWastes.map(waste => waste._id);
+    const farmWasteIds = farmWastes.map((waste) => waste._id);
     const unitPrices = await UnitPrice.find({
-      farmWasteId: { $in: farmWasteIds }
+      farmWasteId: { $in: farmWasteIds },
     });
-    
+
     // Get store information for these farm wastes
-    const storeIds = farmWastes.map(waste => waste.storeId);
+    const storeIds = farmWastes.map((waste) => waste.storeId);
     const stores = await Store.find({
-      _id: { $in: storeIds }
+      _id: { $in: storeIds },
     });
-    
+
     // Map farm wastes with their unit prices and store info
-    const farmWastesWithDetails = farmWastes.map(waste => {
+    const farmWastesWithDetails = farmWastes.map((waste) => {
       const wasteUnitPrices = unitPrices.filter(
-        price => price.farmWasteId.toString() === (waste._id as mongoose.Types.ObjectId).toString()
+        (price) =>
+          price.farmWasteId.toString() ===
+          (waste._id as mongoose.Types.ObjectId).toString()
       );
-      
+
       const store = stores.find(
-        store => (store._id as mongoose.Types.ObjectId).toString() === waste.storeId.toString()
+        (store) =>
+          (store._id as mongoose.Types.ObjectId).toString() ===
+          waste.storeId.toString()
       );
-      
+
       return {
         _id: waste._id,
         wasteName: waste.wasteName,
@@ -123,7 +136,7 @@ const getAllFarmWastes = async (req: Request, res: Response): Promise<void> => {
           kecamatan: store?.kecamatan,
           detailAlamat: store?.detailAlamat,
         },
-        unitPrices: wasteUnitPrices.map(price => ({
+        unitPrices: wasteUnitPrices.map((price) => ({
           _id: price._id,
           unit: price.unit,
           pricePerUnit: price.pricePerUnit,
@@ -141,7 +154,10 @@ const getAllFarmWastes = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error: any) {
     console.error("Error fetching farm wastes:", error);
-    response.sendInternalError(res, error.message || "Failed to fetch farm wastes");
+    response.sendInternalError(
+      res,
+      error.message || "Failed to fetch farm wastes"
+    );
   }
 };
 
@@ -156,7 +172,7 @@ const getFarmWasteById = async (req: Request, res: Response): Promise<void> => {
     }
 
     const farmWaste = await FarmWaste.findById(id);
-    
+
     if (!farmWaste) {
       response.sendNotFound(res, "Farm waste not found");
       return;
@@ -164,7 +180,7 @@ const getFarmWasteById = async (req: Request, res: Response): Promise<void> => {
 
     // Get unit prices for this farm waste
     const unitPrices = await UnitPrice.find({ farmWasteId: id });
-    
+
     // Get store information
     const store = await Store.findById(farmWaste.storeId);
 
@@ -190,7 +206,7 @@ const getFarmWasteById = async (req: Request, res: Response): Promise<void> => {
           facebook: store?.facebook,
           officialWebsite: store?.officialWebsite,
         },
-        unitPrices: unitPrices.map(price => ({
+        unitPrices: unitPrices.map((price) => ({
           _id: price._id,
           unit: price.unit,
           pricePerUnit: price.pricePerUnit,
@@ -203,17 +219,23 @@ const getFarmWasteById = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error: any) {
     console.error("Error fetching farm waste:", error);
-    response.sendInternalError(res, error.message || "Failed to fetch farm waste");
+    response.sendInternalError(
+      res,
+      error.message || "Failed to fetch farm waste"
+    );
   }
 };
 
 // Get a single farm waste product by slug
-const getFarmWasteBySlug = async (req: Request, res: Response): Promise<void> => {
+const getFarmWasteBySlug = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const { slug } = req.params;
 
     const farmWaste = await FarmWaste.findOne({ slug });
-    
+
     if (!farmWaste) {
       response.sendNotFound(res, "Farm waste not found");
       return;
@@ -221,7 +243,7 @@ const getFarmWasteBySlug = async (req: Request, res: Response): Promise<void> =>
 
     // Get unit prices for this farm waste
     const unitPrices = await UnitPrice.find({ farmWasteId: farmWaste._id });
-    
+
     // Get store information
     const store = await Store.findById(farmWaste.storeId);
 
@@ -248,7 +270,7 @@ const getFarmWasteBySlug = async (req: Request, res: Response): Promise<void> =>
           facebook: store?.facebook,
           officialWebsite: store?.officialWebsite,
         },
-        unitPrices: unitPrices.map(price => ({
+        unitPrices: unitPrices.map((price) => ({
           _id: price._id,
           unit: price.unit,
           pricePerUnit: price.pricePerUnit,
@@ -261,7 +283,10 @@ const getFarmWasteBySlug = async (req: Request, res: Response): Promise<void> =>
     });
   } catch (error: any) {
     console.error("Error fetching farm waste:", error);
-    response.sendInternalError(res, error.message || "Failed to fetch farm waste");
+    response.sendInternalError(
+      res,
+      error.message || "Failed to fetch farm waste"
+    );
   }
 };
 
@@ -277,7 +302,7 @@ const updateFarmWaste = async (req: Request, res: Response): Promise<void> => {
     }
 
     const farmWaste = await FarmWaste.findById(id);
-    
+
     if (!farmWaste) {
       response.sendNotFound(res, "Farm waste not found");
       return;
@@ -298,7 +323,7 @@ const updateFarmWaste = async (req: Request, res: Response): Promise<void> => {
     // Update unit prices if provided
     if (unitPrices && Array.isArray(unitPrices)) {
       // Validate that at least one base unit is provided
-      const hasBaseUnit = unitPrices.some(unit => unit.isBaseUnit === true);
+      const hasBaseUnit = unitPrices.some((unit) => unit.isBaseUnit === true);
       if (!hasBaseUnit) {
         response.sendBadRequest(res, "At least one base unit must be provided");
         return;
@@ -308,11 +333,13 @@ const updateFarmWaste = async (req: Request, res: Response): Promise<void> => {
       await UnitPrice.deleteMany({ farmWasteId: id });
 
       // Create new unit prices
-      const unitPricePromises = unitPrices.map(unit => {
+      const unitPricePromises = unitPrices.map((unit) => {
         if (unit.isBaseUnit) {
           unit.equalWith = 1;
         } else if (!unit.equalWith || unit.equalWith <= 0) {
-          throw new Error(`Unit ${unit.unit} must have a valid equalWith value`);
+          throw new Error(
+            `Unit ${unit.unit} must have a valid equalWith value`
+          );
         }
 
         return UnitPrice.create({
@@ -340,7 +367,10 @@ const updateFarmWaste = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error: any) {
     console.error("Error updating farm waste:", error);
-    response.sendInternalError(res, error.message || "Failed to update farm waste");
+    response.sendInternalError(
+      res,
+      error.message || "Failed to update farm waste"
+    );
   }
 };
 
@@ -355,24 +385,37 @@ const deleteFarmWaste = async (req: Request, res: Response): Promise<void> => {
     }
 
     const farmWaste = await FarmWaste.findById(id);
-    
+
     if (!farmWaste) {
       response.sendNotFound(res, "Farm waste not found");
       return;
     }
 
-    // Delete all associated unit prices first
-    await UnitPrice.deleteMany({ farmWasteId: id });
-    
-    // Delete the farm waste
-    await FarmWaste.findByIdAndDelete(id);
+    const session = await mongoose.startSession();
+
+    try {
+      await session.withTransaction(async () => {
+        await Promise.all([
+          UnitPrice.deleteMany({ farmWasteId: id }, { session }),
+          CartItem.deleteMany({ farmWasteId: id }, { session }),
+          Review.deleteMany({ farmWasteId: id }, { session }),
+        ]);
+
+        await FarmWaste.findByIdAndDelete(id, { session });
+      });
+    } finally {
+      await session.endSession();
+    }
 
     response.sendSuccess(res, {
       message: "Farm waste deleted successfully",
     });
   } catch (error: any) {
     console.error("Error deleting farm waste:", error);
-    response.sendInternalError(res, error.message || "Failed to delete farm waste");
+    response.sendInternalError(
+      res,
+      error.message || "Failed to delete farm waste"
+    );
   }
 };
 

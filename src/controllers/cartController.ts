@@ -145,7 +145,7 @@ const addItemToCart = async (req: AuthRequest, res: Response): Promise<void> => 
 
     // Check stock availability
     if (unitPrice.stock !== undefined && unitPrice.stock < quantity) {
-      response.sendBadRequest(res, "Not enough stock available");
+      response.sendBadRequest(res, "Stock tersedia tidak mencukupi");
       return;
     }
 
@@ -169,7 +169,7 @@ const addItemToCart = async (req: AuthRequest, res: Response): Promise<void> => 
       
       // Check stock again for the new quantity
       if (unitPrice.stock !== undefined && unitPrice.stock < newQuantity) {
-        response.sendBadRequest(res, "Not enough stock available");
+        response.sendBadRequest(res, "Stock tersedia tidak mencukupi");
         return;
       }
       
@@ -237,7 +237,7 @@ const updateCartItem = async (req: Request, res: Response): Promise<void> => {
 
     // Check stock availability
     if (unitPrice.stock !== undefined && unitPrice.stock < quantity) {
-      response.sendBadRequest(res, "Not enough stock available");
+      response.sendBadRequest(res, "Stock tersedia tidak mencukupi");
       return;
     }
 
