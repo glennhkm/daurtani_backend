@@ -5,5 +5,6 @@ const categoryRouter = Router();
 
 categoryRouter.get("/", categoryController.getCategories);
 categoryRouter.post("/", categoryController.createCategories);
+categoryRouter.get("/with-group", categoryController.getCategoriesWithGroup);
 
 export default categoryRouter;

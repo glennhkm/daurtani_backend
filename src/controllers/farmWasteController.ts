@@ -330,7 +330,7 @@ const getFarmWasteBySlug = async (
 const updateFarmWaste = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { wasteName, description, imageUrls, unitPrices } = req.body;
+    const { wasteName, description, imageUrls, unitPrices, categories } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       response.sendBadRequest(res, "Invalid farm waste ID");
@@ -350,6 +350,7 @@ const updateFarmWaste = async (req: Request, res: Response): Promise<void> => {
       {
         wasteName,
         description,
+        categories: categories || farmWaste.categories,
         imageUrls: imageUrls || farmWaste.imageUrls,
         updatedAt: new Date(),
       },

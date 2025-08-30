@@ -118,82 +118,90 @@ const getStoreProducts = async (req: AuthRequest, res: Response): Promise<void> 
       return;
     }
 
-    // Find stores owned by this user
-    const stores = await Store.find({ ownerId }).lean();
-    
+    // 1) Ambil toko milik user (hanya field yang dibutuhkan)
+    const stores = await Store.find(
+      { ownerId },
+      "_id storeName description averageRating provinsi kota kecamatan detailAlamat whatsAppNumber instagram facebook officialWebsite"
+    ).lean();
+
     if (!stores || stores.length === 0) {
-      response.sendSuccess(res, {
-        data: [],
-        message: "Tidak ada toko yang ditemukan",
-      });
+      response.sendSuccess(res, { data: [], message: "Tidak ada toko yang ditemukan" });
       return;
     }
 
-    // Get all store IDs
-    const storeIds = stores.map(store => store._id);
-    
-    // Find all farm wastes for these stores
-    const farmWastes = await FarmWaste.find({ storeId: { $in: storeIds } }).lean();
-    
-    // Get all unit prices for these farm wastes
-    const farmWasteIds = farmWastes.map(waste => waste._id);
-    const unitPrices = await UnitPrice.find({
-      farmWasteId: { $in: farmWasteIds }
-    }).lean();
-    
-    // Group products by store
-    const productsByStore = [];
-    
-    for (const storeItem of stores) {
-      // Find farm wastes for this store
-      const storeWastes = farmWastes.filter(
-        waste => waste.storeId.toString() === storeItem._id.toString()
-      );
-      
-      // Map farm wastes with their unit prices
-      const productsWithDetails = storeWastes.map(waste => {
-        const wasteUnitPrices = unitPrices.filter(
-          price => price.farmWasteId.toString() === waste._id.toString()
-        );
-        
-        return {
-          _id: waste._id,
-          wasteName: waste.wasteName,
-          description: waste.description,
-          averageRating: waste.averageRating,
-          provinsi: storeItem.provinsi,
-          kota: storeItem.kota,
-          kecamatan: storeItem.kecamatan,
-          detailAlamat: storeItem.detailAlamat,
-          whatsAppNumber: storeItem.whatsAppNumber,
-          instagram: storeItem.instagram,
-          facebook: storeItem.facebook,
-          officialWebsite: storeItem.officialWebsite,
-          imageUrls: waste.imageUrls,
-          createdAt: waste.createdAt,
-          updatedAt: waste.updatedAt,
-          store: {
-            _id: storeItem._id,
-            storeName: storeItem.storeName,
-            description: storeItem.description,
-            averageRating: storeItem.averageRating
-          },
-          unitPrices: wasteUnitPrices.map(price => ({
-            _id: price._id,
-            unit: price.unit,
-            pricePerUnit: price.pricePerUnit,
-            isBaseUnit: price.isBaseUnit,
-            stock: price.stock,
-            equalWith: price.equalWith,
-          })),
-        };
+    const storeIds = stores.map((s: any) => s._id);
+
+    // 2) Ambil farm wastes untuk toko-toko tsb + populate categories (_id, name) saja
+    const farmWastes = await FarmWaste.find(
+      { storeId: { $in: storeIds } },
+      "_id storeId wasteName description averageRating categories imageUrls createdAt updatedAt"
+    )
+      .populate({ path: "categories", select: "_id name", model: "Category" })
+      .lean();
+
+    // 3) Ambil UnitPrice untuk semua farm waste (sekali kueri)
+    const farmWasteIds = farmWastes.map((w: any) => w._id);
+    const unitPrices = await UnitPrice.find(
+      { farmWasteId: { $in: farmWasteIds } },
+      "_id farmWasteId unit pricePerUnit isBaseUnit stock equalWith"
+    ).lean();
+
+    // 4) Indexing: group UnitPrice by farmWasteId
+    const unitPricesByWaste = unitPrices.reduce((acc: Record<string, any[]>, p: any) => {
+      const key = p.farmWasteId.toString();
+      (acc[key] ||= []).push({
+        _id: p._id,
+        unit: p.unit,
+        pricePerUnit: p.pricePerUnit,
+        isBaseUnit: p.isBaseUnit,
+        stock: p.stock,
+        equalWith: p.equalWith,
       });
-      
-      productsByStore.push({
-        store: storeItem,
-        products: productsWithDetails
-      });
-    }
+      return acc;
+    }, {});
+
+    // 5) Indexing: group FarmWaste by storeId
+    const wastesByStore = farmWastes.reduce((acc: Record<string, any[]>, w: any) => {
+      const key = w.storeId.toString();
+      (acc[key] ||= []).push(w);
+      return acc;
+    }, {});
+
+    // 6) Bangun respons per store
+    const productsByStore = stores.map((storeItem: any) => {
+      const storeWastes: any[] = wastesByStore[storeItem._id.toString()] || [];
+
+      const productsWithDetails = storeWastes.map((waste: any) => ({
+        _id: waste._id,
+        wasteName: waste.wasteName,
+        description: waste.description,
+        averageRating: waste.averageRating,
+        // categories sudah hasil populate -> pastikan hanya { _id, name }
+        categories: (waste.categories || [])
+          .filter(Boolean)
+          .map((c: any) => ({ _id: c._id, name: c.name })),
+        provinsi: storeItem.provinsi,
+        kota: storeItem.kota,
+        kecamatan: storeItem.kecamatan,
+        detailAlamat: storeItem.detailAlamat,
+        whatsAppNumber: storeItem.whatsAppNumber,
+        instagram: storeItem.instagram,
+        facebook: storeItem.facebook,
+        officialWebsite: storeItem.officialWebsite,
+        imageUrls: waste.imageUrls,
+        createdAt: waste.createdAt,
+        updatedAt: waste.updatedAt,
+        store: {
+          _id: storeItem._id,
+          storeName: storeItem.storeName,
+          description: storeItem.description,
+          averageRating: storeItem.averageRating,
+        },
+        unitPrices: unitPricesByWaste[waste._id.toString()] || [],
+      }));
+
+      return { store: storeItem, products: productsWithDetails };
+    });
 
     response.sendSuccess(res, {
       count: productsByStore.length,

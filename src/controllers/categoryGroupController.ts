@@ -3,6 +3,7 @@ import { AuthRequest } from "./storeController";
 import response from "../libs/utils/responses";
 import mongoose from "mongoose";
 import { CategoryGroup } from "../models/categoryGroupModel";
+import { Console } from "console";
 
 const getCategoryGroups = async (
   req: AuthRequest,

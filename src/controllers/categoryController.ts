@@ -29,7 +29,24 @@ const createCategories = async (
   }
 };
 
+const getCategoriesWithGroup = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const categories = await Category.find().populate("categoryGroupId", "name").lean();
+    const categoriesWithGroup = categories.map(category => {
+      const { categoryGroupId, ...categoryWithoutGroupId } = category;
+      return {
+        ...categoryWithoutGroupId,
+        group: categoryGroupId,    
+      };
+    });
+    response.sendSuccess(res, { data: categoriesWithGroup });
+  } catch (error) {
+    response.sendInternalError(res, error);
+  }
+};
+
 export default {
   getCategories,
   createCategories,
+  getCategoriesWithGroup,
 };
