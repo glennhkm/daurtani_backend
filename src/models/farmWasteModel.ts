@@ -7,8 +7,13 @@ export interface IFarmWaste extends Document {
   slug: string;
   imageUrls: string[];
   averageRating?: number;
-  createdAt: Date;
   categories?: Types.ObjectId[];
+  stock?: number;
+  tags?: string[];
+  species?: string[];
+  use_cases?: string[];
+  vector?: number[];
+  createdAt: Date;
   updatedAt: Date;
 }
 
@@ -19,8 +24,12 @@ const FarmWasteSchema: Schema = new Schema<IFarmWaste>({
   description: { type: String },
   imageUrls: { type: [String], default: [] },
   averageRating: { type: Number },
-  createdAt: { type: Date, default: Date.now },
   categories: [{ type: Schema.Types.ObjectId, default: [], ref: "Category" }],
+  tags: { type: [String], index: true, default: [] },
+  species: { type: [String], index: true, default: [] },
+  use_cases: { type: [String], index: true, default: [] },
+  vector: { type: [Number], index: false },
+  createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
 
