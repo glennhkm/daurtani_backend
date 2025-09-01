@@ -72,19 +72,24 @@ async function buildEmbeddingBasis(doc: {
   wasteName: string;
   description?: string;
   tags?: string[];
+  species?: string[];
+  use_cases?: string[];
 }) {
   const basis = [
     doc.wasteName,
     doc.description || "",
     ...(doc.tags || []),
+    ...(doc.species || []),
+    ...(doc.use_cases || []),
   ]
     .join("\n")
     .trim();
   if (!basis) return [];
   try {
-    const vec = embedQuery(basis);
+    const vec = await embedQuery(basis); // ← PERBAIKAN: tambah await
     return Array.isArray(vec) ? vec : [];
-  } catch {
+  } catch (error) {
+    console.error("Error generating embedding:", error);
     // jangan gagalkan create/update kalau embedding error
     return [];
   }
@@ -177,6 +182,8 @@ const createFarmWaste = async (req: Request, res: Response): Promise<void> => {
       wasteName,
       description,
       tags: normTags,
+      species: normSpecies,
+      use_cases: normUseCases,
     });
     if (vector.length) {
       await FarmWaste.findByIdAndUpdate(newFarmWaste._id, { vector });
@@ -440,7 +447,13 @@ const updateFarmWaste = async (req: Request, res: Response): Promise<void> => {
     const willChangeTags =
       Array.isArray(normTags) &&
       normTags.join(",") !== (farmWaste.tags || []).join(",");
-    const shouldReEmbed = willChangeName || willChangeDesc || willChangeTags;
+    const willChangeSpecies =
+      Array.isArray(normSpecies) &&
+      normSpecies.join(",") !== (farmWaste.species || []).join(",");
+    const willChangeUseCases =
+      Array.isArray(normUseCases) &&
+      normUseCases.join(",") !== (farmWaste.use_cases || []).join(",");
+    const shouldReEmbed = willChangeName || willChangeDesc || willChangeTags || willChangeSpecies || willChangeUseCases;
 
     // Jika ganti nama → pastikan slug tetap unik (opsional)
     let updateSlug: string | undefined;
@@ -502,6 +515,8 @@ const updateFarmWaste = async (req: Request, res: Response): Promise<void> => {
         wasteName: updatedFarmWaste.wasteName,
         description: updatedFarmWaste.description || "",
         tags: updatedFarmWaste.tags || [],
+        species: updatedFarmWaste.species || [],
+        use_cases: updatedFarmWaste.use_cases || [],
       });
       await FarmWaste.findByIdAndUpdate(id, { vector: vec || [] });
     }
