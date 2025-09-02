@@ -290,6 +290,7 @@ const getFarmWasteById = async (req: Request, res: Response): Promise<void> => {
 
     const farmWaste = await FarmWaste.findById(id);
     if (!farmWaste) {
+      console.log("ERROR 1")
       response.sendNotFound(res, "Farm waste not found");
       return;
     }
@@ -574,6 +575,182 @@ const deleteFarmWaste = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+// Check if string is a valid ObjectId
+const isObjectId = (val: string) => mongoose.Types.ObjectId.isValid(val) && String(new mongoose.Types.ObjectId(val)) === val;
+
+// Get a single farm waste product by ID or slug
+const getFarmWasteByIdOrSlug = async (req: Request, res: Response) => {
+  try {
+    const { idOrSlug } = req.params;
+
+    const query = isObjectId(idOrSlug)
+      ? { _id: idOrSlug }
+      : { slug: idOrSlug };
+
+    const fw = await FarmWaste.findOne(query);
+    if (!fw) {
+      console.log("ERROR 22")
+      return response.sendNotFound(res, "Farm waste not found")
+    };
+
+    // Populate store snapshot
+    const store = await Store.findById(fw.storeId, {
+      storeName: 1,
+      provinsi: 1,
+      kota: 1,
+      kecamatan: 1,
+      detailAlamat: 1,
+      description: 1,
+      averageRating: 1,
+      whatsAppNumber: 1,
+      instagram: 1,
+      facebook: 1,
+      officialWebsite: 1,
+      bankName: 1,
+      bankAccountNumber: 1,
+      bankAccountHolder: 1,
+      createdAt: 1,
+    });
+
+    // Fetch unit prices for this product
+    const unitPrices = await UnitPrice.find(
+      { farmWasteId: fw._id },
+      {
+        unit: 1,
+        pricePerUnit: 1,
+        isBaseUnit: 1,
+        stock: 1,
+        equalWith: 1,
+      }
+    ).sort({ isBaseUnit: -1, pricePerUnit: 1 });
+
+    const data = {
+      _id: fw._id,
+      wasteName: fw.wasteName,
+      slug: fw.slug,
+      description: fw.description,
+      imageUrls: fw.imageUrls,
+      averageRating: fw.averageRating || 0,
+      tags: fw.tags,
+      species: fw.species,
+      use_cases: fw.use_cases,
+      createdAt: fw.createdAt,
+      updatedAt: fw.updatedAt,
+      store,
+      unitPrices,
+    };
+
+    return response.sendSuccess(res, { data });
+  } catch (err: any) {
+    console.error("getFarmWasteByIdOrSlug error", err);
+    return response.sendInternalError(res, err.message);
+  }
+};
+
+// Get featured products (random 3 products with good ratings)
+export const getFeaturedProducts = async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 3;
+    
+    // Aggregate pipeline to get random featured products
+    const featuredProducts = await FarmWaste.aggregate([
+      // Join with UnitPrice to get pricing info
+      {
+        $lookup: {
+          from: "unitprices",
+          localField: "_id",
+          foreignField: "farmWasteId",
+          as: "unitPrices"
+        }
+      },
+      // Join with Store to get store info
+      {
+        $lookup: {
+          from: "stores",
+          localField: "storeId",
+          foreignField: "_id",
+          as: "store"
+        }
+      },
+      // Filter products that have unit prices and store
+      {
+        $match: {
+          unitPrices: { $ne: [] },
+          store: { $ne: [] },
+          imageUrls: { $ne: [] } // Only products with images
+        }
+      },
+      // Add computed fields
+      {
+        $addFields: {
+          store: { $arrayElemAt: ["$store", 0] },
+          baseUnitPrice: {
+            $arrayElemAt: [
+              {
+                $filter: {
+                  input: "$unitPrices",
+                  as: "up",
+                  cond: { $eq: ["$$up.isBaseUnit", true] }
+                }
+              },
+              0
+            ]
+          },
+          // Calculate average rating (default to 4.5 if no rating)
+          displayRating: {
+            $ifNull: ["$averageRating", 4.5]
+          }
+        }
+      },
+      // Ensure we have base unit price
+      {
+        $match: {
+          baseUnitPrice: { $ne: null }
+        }
+      },
+      // Sample random products
+      { $sample: { size: limit } },
+      // Project final fields
+      {
+        $project: {
+          _id: 1,
+          wasteName: 1,
+          description: 1,
+          slug: 1,
+          imageUrls: 1,
+          averageRating: "$displayRating",
+          unitPrices: 1,
+          "store._id": 1,
+          "store.storeName": 1,
+          "store.provinsi": 1,
+          "store.kota": 1,
+          "store.kecamatan": 1,
+          categories: 1,
+          tags: 1,
+          createdAt: 1,
+          updatedAt: 1
+        }
+      }
+    ]);
+
+    // Transform data to match frontend expectations
+    const transformedProducts = featuredProducts.map(product => ({
+      ...product,
+      // Add featured flag
+      featured: true
+    }));
+
+    return response.sendSuccess(res, {
+      data: transformedProducts,
+      message: "Featured products retrieved successfully"
+    });
+
+  } catch (err: any) {
+    console.error("Error getting featured products:", err);
+    return response.sendInternalError(res, err.message);
+  }
+};
+
 export default {
   createFarmWaste,
   getAllFarmWastes,
@@ -581,4 +758,6 @@ export default {
   getFarmWasteBySlug,
   updateFarmWaste,
   deleteFarmWaste,
+  getFarmWasteByIdOrSlug,
+  getFeaturedProducts, // added
 };

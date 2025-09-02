@@ -4,6 +4,9 @@ import transactionController from "../controllers/transactionController";
 
 const router = Router();
 
+// Preview items before creating payment (buy now / cart validation)
+router.post("/preview", middleware.authorization, transactionController.previewTransaction);
+
 // Create transaction (init payment)
 router.post("/", middleware.authorization, transactionController.createTransaction);
 

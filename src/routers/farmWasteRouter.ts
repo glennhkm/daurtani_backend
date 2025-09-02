@@ -3,13 +3,18 @@ import farmWasteController from "../controllers/farmWasteController";
 
 const router = Router();
 
+// Public routes (no auth required)
+router.get("/featured", farmWasteController.getFeaturedProducts);
+
 // Get all farm wastes
 router.get("/", farmWasteController.getAllFarmWastes);
 
-// Get a single farm waste by slug
-router.get("/:slug", farmWasteController.getFarmWasteBySlug);
+// Get a single farm waste by id or slug
+router.get("/:idOrSlug", farmWasteController.getFarmWasteByIdOrSlug);
 
-router.get("/:id", farmWasteController.getFarmWasteById);
+// Get a single farm waste by slug
+// router.get("/:slug", farmWasteController.getFarmWasteBySlug);
+
 
 // Create a new farm waste
 router.post("/", farmWasteController.createFarmWaste);

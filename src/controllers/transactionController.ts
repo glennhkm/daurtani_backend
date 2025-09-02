@@ -6,6 +6,7 @@ import { FarmWaste } from "../models/farmWasteModel";
 import response from "../libs/utils/responses";
 import { AuthRequest } from "./cartController";
 import mongoose from "mongoose";
+import { UnitPrice } from "../models/unitPriceModel";
 
 // Create transaction when initiating payment (before redirect to DOKU)
 export const createTransaction = async (req: AuthRequest, res: Response) => {
@@ -128,9 +129,83 @@ export const updateTransactionStatus = async (req: Request, res: Response) => {
   }
 };
 
+// Preview (validate) items before creating payment / transaction
+export const previewTransaction = async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) return response.sendUnauthorized(res, "Unauthorized");
+    const { items } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return response.sendBadRequest(res, "Items required");
+    }
+
+    // Fetch all needed products & unit prices in batch
+    const productIds = items.map((it: any) => it.productId).filter(Boolean);
+    const fwDocs = await FarmWaste.find({ _id: { $in: productIds } });
+    const fwMap = new Map(fwDocs.map(fw => [(fw._id as mongoose.Types.ObjectId).toString(), fw]));
+
+    // Collect unitPriceIds if provided
+    const unitPriceIds = items.map((it: any) => it.unitPriceId).filter(Boolean);
+    const unitPriceDocs = await UnitPrice.find({ _id: { $in: unitPriceIds } });
+    const upMap = new Map(unitPriceDocs.map(up => [(up._id as mongoose.Types.ObjectId).toString(), up]));
+
+    const normalized: any[] = [];
+    let subtotal = 0;
+    let totalWeight = 0;
+
+    for (const raw of items) {
+      const { productId, unitPriceId, quantity } = raw;
+      if (!productId || !unitPriceId || !quantity || quantity <= 0) {
+        return response.sendBadRequest(res, "Invalid item structure");
+      }
+      const fw = fwMap.get(String(productId));
+      if (!fw) {
+        return response.sendBadRequest(res, `Product not found: ${productId}`);
+      }
+      const up = upMap.get(String(unitPriceId));
+      if (!up || String(up.farmWasteId) !== String(productId)) {
+        return response.sendBadRequest(res, "Unit price not found / mismatch");
+      }
+      if (typeof up.stock === "number" && quantity > up.stock) {
+        return response.sendBadRequest(res, `Stock insufficient for ${fw.wasteName}`);
+      }
+
+      const lineTotal = up.pricePerUnit * quantity;
+      subtotal += lineTotal;
+      totalWeight += quantity * 1000; // still placeholder weight logic
+
+      normalized.push({
+        productId: fw._id,
+        unitPriceId: up._id,
+        wasteName: fw.wasteName,
+        quantity,
+        unit: up.unit,
+        pricePerUnit: up.pricePerUnit,
+        lineTotal,
+        storeId: fw.storeId,
+        images: fw.imageUrls,
+      });
+    }
+
+    return response.sendSuccess(res, {
+      data: {
+        items: normalized,
+        subtotal,
+        totalWeight,
+        currency: "IDR",
+      },
+      message: "Preview successful",
+    });
+  } catch (err: any) {
+    console.error("previewTransaction error", err);
+    return response.sendInternalError(res, err.message);
+  }
+};
+
 export default {
   createTransaction,
   listUserTransactions,
   getTransactionByOrderId,
   updateTransactionStatus,
+  previewTransaction, // added
 };
