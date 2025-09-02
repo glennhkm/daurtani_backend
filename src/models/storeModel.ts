@@ -22,6 +22,10 @@ export interface IStore extends Document {
   instagram?: string;
   facebook?: string;
   officialWebsite?: string;
+  // Bank / payout info (optional)
+  bankName?: string;
+  bankAccountNumber?: string;
+  bankAccountHolder?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -57,6 +61,9 @@ const StoreSchema: Schema = new Schema<IStore>({
   instagram: { type: String },
   facebook: { type: String },
   officialWebsite: { type: String },
+  bankName: { type: String },
+  bankAccountNumber: { type: String },
+  bankAccountHolder: { type: String },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });

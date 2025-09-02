@@ -11,6 +11,7 @@ import reviewRouter from "./routers/reviewRouter";
 import categoryRouter from "./routers/categoryRouter";
 import categoryGroupRouter from "./routers/categoryGroupRouter";
 import chatRouter from "./routers/chat";
+import transactionRouter from "./routers/transactionRouter";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -55,6 +56,7 @@ app.use("/reviews", reviewRouter);
 app.use("/categories", categoryRouter);
 app.use("/category-groups", categoryGroupRouter);
 app.use("/chat", chatRouter);
+app.use("/transactions", transactionRouter);
 
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);

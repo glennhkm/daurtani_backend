@@ -4,6 +4,7 @@ import { FarmWaste, IFarmWaste } from "../models/farmWasteModel";
 import { UnitPrice, IUnitPrice } from "../models/unitPriceModel";
 import mongoose from "mongoose";
 import response from "../libs/utils/responses";
+import { Transaction } from "../models/transactionModel";
 
 // Define AuthRequest interface to include user property
 export interface AuthRequest extends Request {
@@ -28,7 +29,10 @@ const createStore = async (req: AuthRequest, res: Response): Promise<void> => {
       whatsAppNumber, 
       instagram, 
       facebook, 
-      officialWebsite 
+      officialWebsite,
+      bankName,
+      bankAccountNumber,
+      bankAccountHolder,
     } = req.body;
     const ownerId = req.user?.id; // Get user ID from authenticated request
     
@@ -52,7 +56,10 @@ const createStore = async (req: AuthRequest, res: Response): Promise<void> => {
       instagram,
       facebook,
       officialWebsite,
-      averageRating: 0,
+  averageRating: 0,
+  bankName,
+  bankAccountNumber,
+  bankAccountHolder,
     });
 
     response.sendCreated(res, {
@@ -121,7 +128,7 @@ const getStoreProducts = async (req: AuthRequest, res: Response): Promise<void> 
     // 1) Ambil toko milik user (hanya field yang dibutuhkan)
     const stores = await Store.find(
       { ownerId },
-      "_id storeName description averageRating provinsi kota kecamatan detailAlamat whatsAppNumber instagram facebook officialWebsite"
+      "_id storeName description averageRating provinsi kota kecamatan detailAlamat whatsAppNumber instagram facebook officialWebsite bankName bankAccountNumber bankAccountHolder"
     ).lean();
 
     if (!stores || stores.length === 0) {
@@ -230,7 +237,10 @@ const updateStore = async (req: AuthRequest, res: Response): Promise<void> => {
       whatsAppNumber, 
       instagram, 
       facebook, 
-      officialWebsite 
+      officialWebsite,
+      bankName,
+      bankAccountNumber,
+      bankAccountHolder,
     } = req.body;
     const userId = req.user?.id;
 
@@ -269,7 +279,10 @@ const updateStore = async (req: AuthRequest, res: Response): Promise<void> => {
         instagram,
         facebook,
         officialWebsite,
-        updatedAt: new Date(),
+  updatedAt: new Date(),
+  bankName,
+  bankAccountNumber,
+  bankAccountHolder,
       },
       { new: true }
     );
@@ -281,6 +294,60 @@ const updateStore = async (req: AuthRequest, res: Response): Promise<void> => {
   } catch (error: any) {
     console.error("Error updating store:", error);
     response.sendInternalError(res, error.message || "Failed to update store");
+  }
+};
+
+// Get transactions related to the owner's stores (grouped per transaction but filtered items per store)
+const getStoreTransactions = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const ownerId = req.user?.id;
+    if (!ownerId) return response.sendUnauthorized(res, "User not authenticated");
+
+    // find store ids
+    const stores = await Store.find({ ownerId }, { _id: 1, storeName: 1 }).lean();
+    const storeIds = stores.map(s => s._id);
+    if (storeIds.length === 0) return response.sendSuccess(res, { data: [], message: "Tidak ada toko" });
+
+    // query transactions where any item.storeId in storeIds
+    const txs = await Transaction.find({ 'items.storeId': { $in: storeIds } }).sort({ createdAt: -1 }).lean();
+
+    // build quick lookup for store names
+    const storeNameMap = new Map(stores.map(s => [s._id.toString(), s.storeName]));
+
+    const mapped = txs.map(tx => {
+      // filter only items for these stores (owner's perspective)
+      const storeItems = (tx.items || []).filter((it: any) => it.storeId && storeNameMap.has(it.storeId.toString()));
+      const storeSubtotal = storeItems.reduce((t: number, it: any) => t + (it.total || 0), 0);
+      return {
+        _id: tx._id,
+        orderId: tx.orderId,
+        status: tx.status,
+        createdAt: tx.createdAt,
+        paymentUrl: tx.paymentUrl,
+        paymentExpiry: tx.paymentExpiry,
+        paidAt: tx.paidAt,
+  shippingAddress: tx.shippingAddress,
+        items: storeItems.map((it: any) => ({
+          productId: it.productId,
+          wasteName: it.wasteName,
+          unit: it.unit,
+          unitPrice: it.unitPrice,
+          quantity: it.quantity,
+          total: it.total,
+          productImage: it.productImage,
+          storeId: it.storeId,
+          storeName: it.storeName,
+        })),
+        storeSubtotal,
+        orderTotalAmount: tx.totalAmount,
+        shippingCost: tx.shippingCost,
+      };
+    }).filter(rec => rec.items.length > 0);
+
+    return response.sendSuccess(res, { data: mapped });
+  } catch (error: any) {
+    console.error('Error fetching store transactions', error);
+    return response.sendInternalError(res, error.message || 'Failed to fetch store transactions');
   }
 };
 
@@ -328,6 +395,7 @@ export default {
   // getAllStores,
   // getStoreById,
   getStoreProducts,
+  getStoreTransactions,
   updateStore,
   // deleteStore,
 };

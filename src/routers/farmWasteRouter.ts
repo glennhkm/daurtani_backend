@@ -9,6 +9,8 @@ router.get("/", farmWasteController.getAllFarmWastes);
 // Get a single farm waste by slug
 router.get("/:slug", farmWasteController.getFarmWasteBySlug);
 
+router.get("/:id", farmWasteController.getFarmWasteById);
+
 // Create a new farm waste
 router.post("/", farmWasteController.createFarmWaste);
 

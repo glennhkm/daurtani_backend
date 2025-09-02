@@ -12,6 +12,8 @@ const storeRouter = Router();
 
 // Get a store's products
 storeRouter.get("/products", middleware.authorization, storeController.getStoreProducts);
+// Store transactions (owner view)
+storeRouter.get("/transactions", middleware.authorization, storeController.getStoreTransactions);
 
 // Create a new store - Protected route
 storeRouter.post("/", middleware.authorization, storeController.createStore);
