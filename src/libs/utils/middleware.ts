@@ -41,6 +41,7 @@ const authorization = async (req: AuthRequest, res: Response, next: NextFunction
       id: mongoUser._id,
       email: mongoUser.email,
       fullName: mongoUser.fullName,
+      role: mongoUser.role || "user",
       supabaseId: supabaseUser.id
     };
 
@@ -51,6 +52,16 @@ const authorization = async (req: AuthRequest, res: Response, next: NextFunction
   }
 };
 
+const adminAuthorization = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  await authorization(req, res, () => {
+    if (req.user?.role !== "admin") {
+      return response.sendForbidden(res, "Akses ditolak: Hanya untuk administrator");
+    }
+    next();
+  });
+};
+
 export default {
   authorization,
+  adminAuthorization,
 };

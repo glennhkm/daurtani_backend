@@ -29,6 +29,11 @@ export async function searchProductsCore({
       },
     },
     {
+      $match: {
+        isDeleted: { $ne: true }
+      }
+    },
+    {
       $project: {
         wasteName: 1, description: 1, slug: 1, imageUrls: 1,
         averageRating: 1, tags: 1, species: 1, use_cases: 1, stock: 1, categories: 1,

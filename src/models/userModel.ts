@@ -3,6 +3,7 @@ import mongoose, { Document, Schema, Types } from "mongoose";
 export interface IUser extends Document {
   fullName: string;
   email: string;
+  role?: "user" | "admin";
   phoneNumber?: string;
   accessToken?: string;
   refreshToken?: string;
@@ -31,6 +32,11 @@ const UserSchema: Schema = new Schema<IUser>({
     unique: true,
     lowercase: true,
     trim: true,
+  },
+  role: {
+    type: String,
+    enum: ["user", "admin"],
+    default: "user",
   },
   accessToken: { type: String, required: false },
   refreshToken: { type: String, required: false },

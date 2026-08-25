@@ -209,7 +209,7 @@ const createFarmWaste = async (req: Request, res: Response): Promise<void> => {
 // Get all farm waste products with their unit prices
 const getAllFarmWastes = async (req: Request, res: Response): Promise<void> => {
   try {
-    const farmWastes = await FarmWaste.find().sort({ createdAt: -1 });
+    const farmWastes = await FarmWaste.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 });
 
     const farmWasteIds = farmWastes.map((waste) => waste._id);
     const unitPrices = await UnitPrice.find({ farmWasteId: { $in: farmWasteIds } });
@@ -288,7 +288,7 @@ const getFarmWasteById = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const farmWaste = await FarmWaste.findById(id);
+    const farmWaste = await FarmWaste.findOne({ _id: id, isDeleted: { $ne: true } });
     if (!farmWaste) {
       console.log("ERROR 1")
       response.sendNotFound(res, "Farm waste not found");
@@ -352,7 +352,7 @@ const getFarmWasteBySlug = async (req: Request, res: Response): Promise<void> =>
   try {
     const { slug } = req.params;
 
-    const farmWaste = await FarmWaste.findOne({ slug });
+    const farmWaste = await FarmWaste.findOne({ slug, isDeleted: { $ne: true } });
     if (!farmWaste) {
       response.sendNotFound(res, "Farm waste not found");
       return;
@@ -584,8 +584,8 @@ const getFarmWasteByIdOrSlug = async (req: Request, res: Response) => {
     const { idOrSlug } = req.params;
 
     const query = isObjectId(idOrSlug)
-      ? { _id: idOrSlug }
-      : { slug: idOrSlug };
+      ? { _id: idOrSlug, isDeleted: { $ne: true } }
+      : { slug: idOrSlug, isDeleted: { $ne: true } };
 
     const fw = await FarmWaste.findOne(query);
     if (!fw) {
@@ -654,6 +654,12 @@ export const getFeaturedProducts = async (req: Request, res: Response) => {
     
     // Aggregate pipeline to get random featured products
     const featuredProducts = await FarmWaste.aggregate([
+      // Only active non-deleted products
+      {
+        $match: {
+          isDeleted: { $ne: true }
+        }
+      },
       // Join with UnitPrice to get pricing info
       {
         $lookup: {

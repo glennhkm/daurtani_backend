@@ -49,6 +49,7 @@ const login = async (req: Request, res: Response): Promise<void> => {
           email: 1,
           phoneNumber: 1,
           fullName: 1,
+          role: 1,
           accessToken: 1,
           refreshToken: 1,
           _id: 1,

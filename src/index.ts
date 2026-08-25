@@ -12,13 +12,14 @@ import categoryRouter from "./routers/categoryRouter";
 import categoryGroupRouter from "./routers/categoryGroupRouter";
 import chatRouter from "./routers/chat";
 import transactionRouter from "./routers/transactionRouter";
+import adminRouter from "./routers/adminRouter";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors({
   origin: "*",
-  methods: ["GET", "POST", "PUT", "DELETE"],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
@@ -57,6 +58,7 @@ app.use("/categories", categoryRouter);
 app.use("/category-groups", categoryGroupRouter);
 app.use("/chat", chatRouter);
 app.use("/transactions", transactionRouter);
+app.use("/admin", adminRouter);
 
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
