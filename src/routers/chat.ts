@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { randomUUID } from "crypto";
+import OpenAI from "openai";
 import "dotenv/config";
 import { embedQuery } from "../libs/services/productVectorSearch/embedding";
 import { searchProductsCore } from "../libs/services/productVectorSearch/core";
@@ -9,7 +10,7 @@ const chatRouter = Router();
 // ====== Heuristik intent sederhana ======
 function wantsRecommendations(text: string) {
   const t = (text || "").toLowerCase();
-  return /(sapi|kambing|ayam|ternak|pakan|kompos|biogas|beli|jual|produk|rekomendasi|limbah|sekam|ampas|kulit singkong|padi)/.test(
+  return /(sapi|kambing|ayam|ternak|pakan|kompos|biogas|beli|jual|produk|rekomendasi|limbah|sekam|ampas|kulit singkong|padi|batok|kelapa|tempurung|briket|arang|shisha|karbon|serabut|sabut|cocopeat|jerami|tongkol|jagung|tebu|sawit|pupuk|media tanam|kalori|abu|stok|harga|aceh|toko|cari|butuh)/.test(
     t
   );
 }
@@ -147,6 +148,85 @@ chatRouter.post("/", async (req: Request, res: Response): Promise<void> => {
       meta: { tookMs: ms },
     });
     return;
+  }
+});
+
+/**
+ * POST /chat/completions
+ * Proxy / direct completion and streaming endpoint powered by Groq LLM
+ */
+chatRouter.post("/completions", async (req: Request, res: Response): Promise<void> => {
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) {
+    res.status(500).json({
+      error: "GROQ_API_KEY belum dikonfigurasi di server backend.",
+    });
+    return;
+  }
+
+  const { messages, model, max_tokens, temperature, stream } = req.body || {};
+  if (!messages || !Array.isArray(messages)) {
+    res.status(400).json({ error: "messages array wajib disertakan." });
+    return;
+  }
+
+  const client = new OpenAI({
+    baseURL: "https://api.groq.com/openai/v1",
+    apiKey: groqKey,
+  });
+
+  const selectedModel =
+    model || process.env.GROQ_MODEL || "openai/gpt-oss-20b";
+
+  if (stream) {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    try {
+      const upstream = await client.chat.completions.create({
+        model: selectedModel,
+        messages,
+        stream: true,
+        temperature: typeof temperature === "number" ? temperature : 0.6,
+        max_tokens: typeof max_tokens === "number" ? max_tokens : 1500,
+      });
+
+      for await (const chunk of upstream) {
+        const delta = chunk?.choices?.[0]?.delta?.content;
+        if (delta) {
+          res.write(`data: ${JSON.stringify({ content: delta })}\n\n`);
+        }
+      }
+      res.write("data: [DONE]\n\n");
+      res.end();
+    } catch (err: any) {
+      console.error("[Groq Backend Stream Error]:", err?.message || err);
+      res.write(
+        `data: ${JSON.stringify({
+          error: err?.message || "Terjadi kesalahan streaming Groq.",
+        })}\n\n`
+      );
+      res.end();
+    }
+    return;
+  }
+
+  try {
+    const completion = await client.chat.completions.create({
+      model: selectedModel,
+      messages,
+      stream: false,
+      temperature: typeof temperature === "number" ? temperature : 0.6,
+      max_tokens: typeof max_tokens === "number" ? max_tokens : 1500,
+    });
+    res.status(200).json(completion);
+  } catch (err: any) {
+    console.error("[Groq Backend Completion Error]:", err?.message || err);
+    res.status(500).json({
+      error:
+        err?.message || "Gagal menghasilkan respons AI dari Groq.",
+    });
   }
 });
 

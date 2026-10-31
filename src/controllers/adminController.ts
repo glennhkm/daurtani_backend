@@ -6,6 +6,7 @@ import { Store } from "../models/storeModel";
 import { FarmWaste } from "../models/farmWasteModel";
 import { UnitPrice } from "../models/unitPriceModel";
 import response from "../libs/utils/responses";
+import { embedText } from "../libs/services/productVectorSearch/embedding";
 
 // GET /admin/stats - Dashboard metric summary
 export const getDashboardStats = async (req: Request, res: Response) => {
@@ -737,6 +738,38 @@ export const updateProductByAdmin = async (req: Request, res: Response) => {
     if (typeof isDeleted === "boolean") {
       product.isDeleted = isDeleted;
       product.deletedAt = isDeleted ? new Date() : null;
+    }
+
+    // Regenerate vector embedding if semantic fields were provided
+    if (
+      typeof wasteName === "string" ||
+      typeof description === "string" ||
+      Array.isArray(tags) ||
+      Array.isArray(species) ||
+      Array.isArray(use_cases)
+    ) {
+      try {
+        const embeddingText = [
+          product.wasteName || "",
+          product.description || "",
+          ...(product.tags || []),
+          ...(product.species || []),
+          ...(product.use_cases || []),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim();
+
+        if (embeddingText) {
+          const newVector = await embedText(embeddingText);
+          if (Array.isArray(newVector) && newVector.length > 0) {
+            product.vector = newVector;
+          }
+        }
+      } catch (vecErr) {
+        console.warn("Non-fatal: failed to regenerate vector embedding in admin update:", vecErr);
+      }
     }
 
     product.updatedAt = new Date();
