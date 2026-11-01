@@ -20,6 +20,24 @@ import {
   isJwtExpiredOrInvalid,
 } from "../libs/utils/sessionToken";
 import { sendAdminPasswordResetNoticeEmail } from "../libs/utils/mailjetService";
+import { getOrCreateDaurTaniStore } from "../libs/utils/daurtaniStore";
+
+const toSlug = (s: string) =>
+  s
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
+
+async function uniqueSlug(base: string): Promise<string> {
+  let slug = toSlug(base);
+  let suffix = 2;
+  while (await FarmWaste.findOne({ slug }).lean()) {
+    slug = `${toSlug(base)}-${suffix++}`;
+  }
+  return slug;
+}
 
 // GET /admin/stats - Dashboard metric summary
 export const getDashboardStats = async (req: Request, res: Response) => {
@@ -652,6 +670,10 @@ export const getAllProducts = async (req: Request, res: Response) => {
 
     if (status === "active") {
       filter.isDeleted = { $ne: true };
+      filter.isActive = { $ne: false };
+    } else if (status === "inactive") {
+      filter.isDeleted = { $ne: true };
+      filter.isActive = false;
     } else if (status === "deleted") {
       filter.isDeleted = true;
     }
@@ -709,6 +731,7 @@ export const getAllProducts = async (req: Request, res: Response) => {
         use_cases: p.use_cases || [],
         isDeleted: !!p.isDeleted,
         deletedAt: p.deletedAt || null,
+        isActive: p.isActive !== false,
         createdAt: p.createdAt,
         updatedAt: p.updatedAt,
         store: p.storeId,
@@ -826,6 +849,38 @@ export const toggleProductSoftDelete = async (req: Request, res: Response) => {
   }
 };
 
+// PATCH /admin/products/:id/toggle-active - Toggle product active status
+export const toggleProductActiveByAdmin = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return response.sendBadRequest(res, "ID Produk tidak valid");
+    }
+
+    const product = await FarmWaste.findById(id);
+    if (!product) {
+      return response.sendNotFound(res, "Produk tidak ditemukan");
+    }
+
+    const targetState = typeof isActive === "boolean" ? isActive : product.isActive === false;
+    product.isActive = targetState;
+    product.updatedAt = new Date();
+    await product.save();
+
+    return response.sendSuccess(res, {
+      data: { _id: product._id, isActive: product.isActive },
+      message: targetState
+        ? "Produk berhasil diaktifkan."
+        : "Produk berhasil dinonaktifkan.",
+    });
+  } catch (err: any) {
+    console.error("toggleProductActiveByAdmin error:", err);
+    return response.sendInternalError(res, err.message);
+  }
+};
+
 // PUT /admin/products/:id - Full product update by admin
 export const updateProductByAdmin = async (req: Request, res: Response) => {
   try {
@@ -840,6 +895,7 @@ export const updateProductByAdmin = async (req: Request, res: Response) => {
       tags,
       species,
       use_cases,
+      isActive,
       isDeleted,
       unitPrices,
     } = req.body;
@@ -896,6 +952,10 @@ export const updateProductByAdmin = async (req: Request, res: Response) => {
     if (typeof isDeleted === "boolean") {
       product.isDeleted = isDeleted;
       product.deletedAt = isDeleted ? new Date() : null;
+    }
+
+    if (typeof isActive === "boolean") {
+      product.isActive = isActive;
     }
 
     // Regenerate vector embedding if semantic fields were provided OR if vector is missing/invalid dimension
@@ -976,6 +1036,154 @@ export const updateProductByAdmin = async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error("updateProductByAdmin error:", err);
+    return response.sendInternalError(res, err.message);
+  }
+};
+
+// POST /admin/products - Create a new product by admin
+export const createProductByAdmin = async (req: Request, res: Response) => {
+  try {
+    const {
+      storeId,
+      wasteName,
+      description,
+      imageUrls,
+      categories,
+      unitPrices,
+      tags,
+      species,
+      use_cases,
+      isActive,
+    } = req.body;
+
+    if (!wasteName || typeof wasteName !== "string" || !wasteName.trim()) {
+      return response.sendBadRequest(res, "Nama produk wajib diisi.");
+    }
+
+    // 1. Tentukan target store: jika kosong atau 'daurtani', gunakan toko resmi DaurTani
+    let targetStoreId: mongoose.Types.ObjectId;
+    let targetStoreName = "DaurTani";
+
+    if (!storeId || storeId === "daurtani" || storeId === "official") {
+      const officialStore = await getOrCreateDaurTaniStore();
+      targetStoreId = officialStore._id as mongoose.Types.ObjectId;
+      targetStoreName = officialStore.storeName;
+    } else {
+      if (!mongoose.Types.ObjectId.isValid(storeId)) {
+        return response.sendBadRequest(res, "ID Toko yang dipilih tidak valid.");
+      }
+      const existingStore = await Store.findById(storeId);
+      if (!existingStore) {
+        return response.sendNotFound(res, "Toko yang dipilih tidak ditemukan.");
+      }
+      targetStoreId = existingStore._id as mongoose.Types.ObjectId;
+      targetStoreName = existingStore.storeName;
+    }
+
+    // 2. Validasi unit prices
+    if (!Array.isArray(unitPrices) || unitPrices.length === 0) {
+      return response.sendBadRequest(
+        res,
+        "Minimal harus ada satu satuan harga (unit price)."
+      );
+    }
+
+    const hasBaseUnit = unitPrices.some((u: any) => u.isBaseUnit === true);
+    if (!hasBaseUnit) {
+      unitPrices[0].isBaseUnit = true;
+    }
+
+    // 3. Generate unique slug
+    const productSlug = await uniqueSlug(wasteName.trim());
+
+    // 4. Normalisasi array fields
+    const normTags = Array.isArray(tags)
+      ? tags.map((t: any) => String(t).trim().toLowerCase()).filter(Boolean)
+      : [];
+    const normSpecies = Array.isArray(species)
+      ? species.map((s: any) => String(s).trim().toLowerCase()).filter(Boolean)
+      : [];
+    const normUseCases = Array.isArray(use_cases)
+      ? use_cases.map((u: any) => String(u).trim().toLowerCase()).filter(Boolean)
+      : [];
+    const normCategories = Array.isArray(categories)
+      ? categories.filter((c: any) => mongoose.Types.ObjectId.isValid(c))
+      : [];
+    const normImages = Array.isArray(imageUrls)
+      ? imageUrls.filter((img: any) => typeof img === "string" && img.trim())
+      : [];
+
+    // 5. Generate vector embedding menggunakan Eden AI
+    let vector: number[] = [];
+    try {
+      const embeddingText = buildProductEmbeddingBasis({
+        wasteName: wasteName.trim(),
+        description: description || "",
+        tags: normTags,
+        species: normSpecies,
+        use_cases: normUseCases,
+      });
+
+      if (embeddingText) {
+        vector = await embedDoc(embeddingText);
+      }
+    } catch (vecErr) {
+      console.warn("Non-fatal: Gagal generate embedding saat admin create product:", vecErr);
+    }
+
+    // Hitung total stok dari unit prices
+    const totalStock = unitPrices.reduce(
+      (sum: number, u: any) => sum + (Number(u.stock) || 0),
+      0
+    );
+
+    // 6. Buat dokumen FarmWaste
+    const newProduct = await FarmWaste.create({
+      storeId: targetStoreId,
+      wasteName: wasteName.trim(),
+      slug: productSlug,
+      description: description || "",
+      imageUrls: normImages,
+      categories: normCategories,
+      tags: normTags,
+      species: normSpecies,
+      use_cases: normUseCases,
+      stock: totalStock,
+      averageRating: 5.0,
+      vector,
+      isActive: typeof isActive === "boolean" ? isActive : true,
+      isDeleted: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    // 7. Simpan UnitPrices
+    const createdUnitPrices = await Promise.all(
+      unitPrices.map((u: any, idx: number) =>
+        UnitPrice.create({
+          farmWasteId: newProduct._id,
+          unit: u.unit?.trim() || "Kg",
+          pricePerUnit: Number(u.pricePerUnit) || 0,
+          isBaseUnit: u.isBaseUnit === true || (idx === 0 && !hasBaseUnit),
+          stock: Number(u.stock) || 0,
+          equalWith: Number(u.equalWith) || 1,
+          createdAt: newProduct.createdAt,
+          updatedAt: new Date(),
+        })
+      )
+    );
+
+    return response.sendCreated(res, {
+      data: {
+        ...newProduct.toObject(),
+        store: { _id: targetStoreId, storeName: targetStoreName },
+        unitPrices: createdUnitPrices,
+        hasVector: Array.isArray(vector) && vector.length === EMBEDDING_DIMENSION,
+      },
+      message: "Produk berhasil ditambahkan oleh Administrator.",
+    });
+  } catch (err: any) {
+    console.error("createProductByAdmin error:", err);
     return response.sendInternalError(res, err.message);
   }
 };
@@ -1139,6 +1347,8 @@ export default {
   getAllProducts,
   getProductDetail,
   toggleProductSoftDelete,
+  toggleProductActiveByAdmin,
+  createProductByAdmin,
   updateProductByAdmin,
   embedProductByAdmin,
   embedMissingProductsByAdmin,

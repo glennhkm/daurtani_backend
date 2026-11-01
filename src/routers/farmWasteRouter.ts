@@ -22,6 +22,9 @@ router.post("/", farmWasteController.createFarmWaste);
 // Update a farm waste
 router.put("/:id", farmWasteController.updateFarmWaste);
 
+// Toggle active status
+router.patch("/:id/toggle-active", farmWasteController.toggleProductActive);
+
 // Delete a farm waste
 router.delete("/:id", farmWasteController.deleteFarmWaste);
 

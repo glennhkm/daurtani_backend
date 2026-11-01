@@ -24,12 +24,14 @@ router.post("/users/:id/reset-password", adminController.resetUserPasswordByAdmi
 router.get("/stores", adminController.getAllStores);
 router.get("/stores/:id", adminController.getStoreDetail);
 
-// Products management, embedding & soft delete
+// Products management, creation, embedding & soft delete
 router.get("/products", adminController.getAllProducts);
+router.post("/products", adminController.createProductByAdmin);
 router.post("/products/embed-missing", adminController.embedMissingProductsByAdmin);
 router.get("/products/:id", adminController.getProductDetail);
 router.put("/products/:id", adminController.updateProductByAdmin);
 router.patch("/products/:id/soft-delete", adminController.toggleProductSoftDelete);
+router.patch("/products/:id/toggle-active", adminController.toggleProductActiveByAdmin);
 router.post("/products/:id/embed", adminController.embedProductByAdmin);
 
 export default router;

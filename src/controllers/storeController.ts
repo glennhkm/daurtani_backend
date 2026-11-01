@@ -140,8 +140,8 @@ const getStoreProducts = async (req: AuthRequest, res: Response): Promise<void> 
 
     // 2) Ambil farm wastes untuk toko-toko tsb + populate categories (_id, name) saja
     const farmWastes = await FarmWaste.find(
-      { storeId: { $in: storeIds } },
-      "_id storeId wasteName description averageRating categories imageUrls tags species use_cases createdAt updatedAt"
+      { storeId: { $in: storeIds }, isDeleted: { $ne: true } },
+      "_id storeId wasteName description averageRating categories imageUrls tags species use_cases isActive createdAt updatedAt"
     )
       .populate({ path: "categories", select: "_id name", model: "Category" })
       .lean();
@@ -198,6 +198,7 @@ const getStoreProducts = async (req: AuthRequest, res: Response): Promise<void> 
         facebook: storeItem.facebook,
         officialWebsite: storeItem.officialWebsite,
         imageUrls: waste.imageUrls,
+        isActive: waste.isActive !== false,
         createdAt: waste.createdAt,
         updatedAt: waste.updatedAt,
         store: {

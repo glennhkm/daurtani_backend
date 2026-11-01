@@ -209,7 +209,7 @@ const createFarmWaste = async (req: Request, res: Response): Promise<void> => {
 // Get all farm waste products with their unit prices
 const getAllFarmWastes = async (req: Request, res: Response): Promise<void> => {
   try {
-    const farmWastes = await FarmWaste.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 });
+    const farmWastes = await FarmWaste.find({ isDeleted: { $ne: true }, isActive: { $ne: false } }).sort({ createdAt: -1 });
 
     const farmWasteIds = farmWastes.map((waste) => waste._id);
     const unitPrices = await UnitPrice.find({ farmWasteId: { $in: farmWasteIds } });
@@ -242,6 +242,7 @@ const getAllFarmWastes = async (req: Request, res: Response): Promise<void> => {
         tags: waste.tags ?? [],
         species: waste.species ?? [],
         use_cases: waste.use_cases ?? [],
+        isActive: waste.isActive !== false,
         createdAt: waste.createdAt,
         updatedAt: waste.updatedAt,
         store: store && {
@@ -288,7 +289,7 @@ const getFarmWasteById = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const farmWaste = await FarmWaste.findOne({ _id: id, isDeleted: { $ne: true } });
+    const farmWaste = await FarmWaste.findOne({ _id: id, isDeleted: { $ne: true }, isActive: { $ne: false } });
     if (!farmWaste) {
       console.log("ERROR 1")
       response.sendNotFound(res, "Farm waste not found");
@@ -352,7 +353,7 @@ const getFarmWasteBySlug = async (req: Request, res: Response): Promise<void> =>
   try {
     const { slug } = req.params;
 
-    const farmWaste = await FarmWaste.findOne({ slug, isDeleted: { $ne: true } });
+    const farmWaste = await FarmWaste.findOne({ slug, isDeleted: { $ne: true }, isActive: { $ne: false } });
     if (!farmWaste) {
       response.sendNotFound(res, "Farm waste not found");
       return;
@@ -423,6 +424,7 @@ const updateFarmWaste = async (req: Request, res: Response): Promise<void> => {
       tags,
       species,
       use_cases,
+      isActive,
     } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -474,6 +476,7 @@ const updateFarmWaste = async (req: Request, res: Response): Promise<void> => {
     if (normSpecies) patch.species = normSpecies;
     if (normUseCases) patch.use_cases = normUseCases;
     if (updateSlug) patch.slug = updateSlug;
+    if (typeof isActive === "boolean") patch.isActive = isActive;
 
     const updatedFarmWaste = await FarmWaste.findByIdAndUpdate(id, patch, { new: true });
 
@@ -575,6 +578,38 @@ const deleteFarmWaste = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+// Toggle active/inactive status for a farm waste product
+const toggleProductActive = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      response.sendBadRequest(res, "Invalid farm waste ID");
+      return;
+    }
+
+    const product = await FarmWaste.findById(id);
+    if (!product) {
+      response.sendNotFound(res, "Farm waste not found");
+      return;
+    }
+
+    const targetState = typeof isActive === "boolean" ? isActive : product.isActive === false;
+    product.isActive = targetState;
+    product.updatedAt = new Date();
+    await product.save();
+
+    response.sendSuccess(res, {
+      data: { _id: product._id, isActive: product.isActive },
+      message: targetState ? "Produk berhasil diaktifkan" : "Produk berhasil dinonaktifkan",
+    });
+  } catch (error: any) {
+    console.error("Error toggling product active status:", error);
+    response.sendInternalError(res, error.message || "Failed to toggle product status");
+  }
+};
+
 // Check if string is a valid ObjectId
 const isObjectId = (val: string) => mongoose.Types.ObjectId.isValid(val) && String(new mongoose.Types.ObjectId(val)) === val;
 
@@ -584,8 +619,8 @@ const getFarmWasteByIdOrSlug = async (req: Request, res: Response) => {
     const { idOrSlug } = req.params;
 
     const query = isObjectId(idOrSlug)
-      ? { _id: idOrSlug, isDeleted: { $ne: true } }
-      : { slug: idOrSlug, isDeleted: { $ne: true } };
+      ? { _id: idOrSlug, isDeleted: { $ne: true }, isActive: { $ne: false } }
+      : { slug: idOrSlug, isDeleted: { $ne: true }, isActive: { $ne: false } };
 
     const fw = await FarmWaste.findOne(query);
     if (!fw) {
@@ -657,7 +692,8 @@ export const getFeaturedProducts = async (req: Request, res: Response) => {
       // Only active non-deleted products
       {
         $match: {
-          isDeleted: { $ne: true }
+          isDeleted: { $ne: true },
+          isActive: { $ne: false },
         }
       },
       // Join with UnitPrice to get pricing info
@@ -764,6 +800,7 @@ export default {
   getFarmWasteBySlug,
   updateFarmWaste,
   deleteFarmWaste,
+  toggleProductActive,
   getFarmWasteByIdOrSlug,
   getFeaturedProducts, // added
 };

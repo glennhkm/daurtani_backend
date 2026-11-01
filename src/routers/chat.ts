@@ -116,7 +116,7 @@ chatRouter.post("/", async (req: Request, res: Response): Promise<void> => {
     }
 
     // ==== Phase 2: vector search (anti-halusinasi: semua dari DB) ====
-    const cfg = { limit: 3, numCandidates: 150, minScore: 0.3 };
+    const cfg = { limit: 3, numCandidates: 150, minScore: 0.5 };
     let productsRaw: any[] = [];
 
     if (qVector && qVector.length > 0) {
@@ -129,10 +129,8 @@ chatRouter.post("/", async (req: Request, res: Response): Promise<void> => {
         `[recs][${rid}] vectorSearch.ok | items=${productsRaw.length
         } | bestScore=${productsRaw[0]?.score?.toFixed?.(4) ?? "n/a"} | ${t2 - t0}ms`
       );
-    }
-
-    // Fallback search jika vector search tidak menghasilkan produk atau embedding gagal
-    if (!productsRaw || productsRaw.length === 0) {
+    } else {
+      // Hanya jika embedding API gagal (qVector kosong), lakukan fallback keyword darurat
       const keywords = last
         .toLowerCase()
         .replace(/[^\w\s]/g, " ")
@@ -143,6 +141,7 @@ chatRouter.post("/", async (req: Request, res: Response): Promise<void> => {
         const regexList = keywords.map((k) => new RegExp(k, "i"));
         const fallbackDocs = await FarmWaste.find({
           isDeleted: { $ne: true },
+          isActive: { $ne: false },
           $or: [
             { wasteName: { $in: regexList } },
             { tags: { $in: regexList } },
@@ -181,11 +180,19 @@ chatRouter.post("/", async (req: Request, res: Response): Promise<void> => {
       `[recs][${rid}] 200 ok | products=${products.length} | total ${ms}ms`
     );
 
+    const notFoundMessage =
+      products.length === 0
+        ? "Produk tidak tersedia pada platform ini untuk permintaan tersebut."
+        : null;
+
     res.status(200).json({
       products,
+      notFoundMessage,
       meta: {
         intent: true,
         tookMs: ms,
+        threshold: cfg.minScore,
+        matchedCount: products.length,
         cfg,
       },
     });

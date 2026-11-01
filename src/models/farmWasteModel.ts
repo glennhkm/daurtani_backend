@@ -13,6 +13,7 @@ export interface IFarmWaste extends Document {
   species?: string[];
   use_cases?: string[];
   vector?: number[];
+  isActive?: boolean;
   isDeleted?: boolean;
   deletedAt?: Date | null;
   createdAt: Date;
@@ -31,6 +32,7 @@ const FarmWasteSchema: Schema = new Schema<IFarmWaste>({
   species: { type: [String], index: true, default: [] },
   use_cases: { type: [String], index: true, default: [] },
   vector: { type: [Number], index: false },
+  isActive: { type: Boolean, default: true, index: true },
   isDeleted: { type: Boolean, default: false, index: true },
   deletedAt: { type: Date, default: null },
   createdAt: { type: Date, default: Date.now },

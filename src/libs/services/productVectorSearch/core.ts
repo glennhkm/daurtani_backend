@@ -44,7 +44,7 @@ export async function searchProductsCore({
   categories,
   limit = 5,
   numCandidates = 100,
-  minScore = 0.3,
+  minScore = 0.5,
   indexName = "vector",
 }: {
   qVector: number[];
@@ -85,6 +85,7 @@ export async function searchProductsCore({
       {
         $match: {
           isDeleted: { $ne: true },
+          isActive: { $ne: false },
         },
       },
       {
@@ -121,6 +122,7 @@ export async function searchProductsCore({
   try {
     const query: any = {
       isDeleted: { $ne: true },
+      isActive: { $ne: false },
       vector: { $exists: true, $ne: [] },
       ...filter,
     };
