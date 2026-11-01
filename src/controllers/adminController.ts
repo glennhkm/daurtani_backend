@@ -7,6 +7,15 @@ import { FarmWaste } from "../models/farmWasteModel";
 import { UnitPrice } from "../models/unitPriceModel";
 import response from "../libs/utils/responses";
 import { embedText } from "../libs/services/productVectorSearch/embedding";
+import {
+  encryptSyncSecret,
+  obtainUserSupabaseSession,
+} from "./authController";
+import {
+  issueBackendSessionToken,
+  isJwtExpiredOrInvalid,
+} from "../libs/utils/sessionToken";
+import { sendAdminPasswordResetNoticeEmail } from "../libs/utils/mailjetService";
 
 // GET /admin/stats - Dashboard metric summary
 export const getDashboardStats = async (req: Request, res: Response) => {
@@ -333,6 +342,110 @@ export const getUserDetail = async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     console.error("getUserDetail error:", err);
+    return response.sendInternalError(res, err.message);
+  }
+};
+
+// POST /admin/users/:id/reset-password - Reset user password directly by admin
+export const resetUserPasswordByAdmin = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+    const { newPassword, sendEmailNotification = false } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return response.sendBadRequest(res, "ID Pengguna tidak valid");
+    }
+
+    if (!newPassword || typeof newPassword !== "string" || newPassword.trim().length < 6) {
+      return response.sendBadRequest(
+        res,
+        "Kata sandi baru minimal harus terdiri dari 6 karakter"
+      );
+    }
+
+    const cleanPassword = newPassword.trim();
+    const user = await User.findById(id);
+
+    if (!user) {
+      return response.sendNotFound(res, "Pengguna tidak ditemukan");
+    }
+
+    // 1. Attempt to sync new password with Supabase Auth if session exists
+    let supabaseSynced = false;
+    try {
+      const { scopedClient, accessToken } = await obtainUserSupabaseSession(user);
+      if (accessToken) {
+        const { error: updateErr } = await scopedClient.auth.updateUser({
+          password: cleanPassword,
+        });
+
+        if (!updateErr) {
+          supabaseSynced = true;
+          // Refresh session tokens with new password
+          const { data: freshSign } = await scopedClient.auth.signInWithPassword({
+            email: user.email,
+            password: cleanPassword,
+          });
+          if (freshSign?.session) {
+            user.accessToken = freshSign.session.access_token;
+            user.refreshToken = freshSign.session.refresh_token;
+          }
+        } else {
+          console.warn("Supabase updateUser notice during admin reset:", updateErr.message);
+        }
+      }
+    } catch (err: any) {
+      console.warn("Supabase session sync skipped/failed during admin reset:", err?.message || err);
+    }
+
+    // 2. If Supabase session is unavailable or token is invalid, issue guaranteed backend session token
+    if (!supabaseSynced || isJwtExpiredOrInvalid(user.accessToken)) {
+      const issued = issueBackendSessionToken(user);
+      user.accessToken = issued.accessToken;
+      user.refreshToken = issued.refreshToken;
+    }
+
+    // 3. Update MongoDB user record
+    user.authSyncCipher = encryptSyncSecret(cleanPassword);
+    user.isEmailVerified = true;
+    user.activationTokenHash = null;
+    user.activationTokenExpiresAt = null;
+    user.resetPasswordTokenHash = null;
+    user.resetPasswordExpiresAt = null;
+    user.updatedAt = new Date();
+    await user.save();
+
+    // 4. Optionally send email notification via Mailjet
+    let emailSent = false;
+    if (sendEmailNotification && user.email) {
+      try {
+        await sendAdminPasswordResetNoticeEmail({
+          toEmail: user.email,
+          fullName: user.fullName || user.email.split("@")[0],
+          newPassword: cleanPassword,
+        });
+        emailSent = true;
+      } catch (emailErr: any) {
+        console.error("Gagal mengirim email reset password admin ke user:", emailErr?.message || emailErr);
+      }
+    }
+
+    return response.sendSuccess(res, {
+      data: {
+        userId: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        emailSent,
+        supabaseSynced,
+        updatedAt: user.updatedAt,
+      },
+      message: `Kata sandi untuk pengguna ${user.fullName || user.email} berhasil diperbarui.`,
+    });
+  } catch (err: any) {
+    console.error("resetUserPasswordByAdmin error:", err);
     return response.sendInternalError(res, err.message);
   }
 };
@@ -817,6 +930,7 @@ export default {
   updateTransactionStatusByAdmin,
   getAllUsers,
   getUserDetail,
+  resetUserPasswordByAdmin,
   getAllStores,
   getStoreDetail,
   getAllProducts,

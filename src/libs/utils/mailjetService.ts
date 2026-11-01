@@ -257,3 +257,102 @@ export const sendPasswordResetEmail = async ({
   });
 };
 
+export const sendAdminPasswordResetNoticeEmail = async ({
+  toEmail,
+  fullName,
+  newPassword,
+  loginUrl,
+}: {
+  toEmail: string;
+  fullName: string;
+  newPassword: string;
+  loginUrl?: string;
+}): Promise<void> => {
+  const safeName = escapeHtml(fullName || toEmail.split("@")[0]);
+  const safePassword = escapeHtml(newPassword);
+  const siteUrl = (
+    process.env.PUBLIC_SITE_URL || "https://www.daurtani.id"
+  ).replace(/\/+$/, "");
+  const targetLoginUrl = escapeHtml(loginUrl || `${siteUrl}/auth/login`);
+  const subject = "Pemberitahuan: Kata Sandi Akun DaurTani Anda Telah Diperbarui";
+
+  const textPart = [
+    `Halo ${fullName || toEmail},`,
+    "",
+    "Kata sandi untuk akun DaurTani Anda telah berhasil diatur ulang oleh tim Administrator DaurTani.",
+    "",
+    `Kata Sandi Baru Anda: ${newPassword}`,
+    "",
+    `Silakan masuk ke akun Anda melalui tautan berikut: ${targetLoginUrl}`,
+    "",
+    "Demi keamanan akun Anda, kami sarankan Anda segera mengubah kata sandi ini setelah berhasil masuk melalui menu Pengaturan Profil.",
+    "",
+    "Salam hangat,",
+    "Tim DaurTani",
+  ].join("\n");
+
+  const htmlPart = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${subject}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f9f5ec;font-family:'Segoe UI',Helvetica,Arial,sans-serif;color:#1e1e1e;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#f9f5ec;padding:36px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background-color:#ffffff;border:1px solid rgba(116,167,107,0.35);border-radius:16px;overflow:hidden;box-shadow:0 4px 20px rgba(30,30,30,0.06);">
+          <tr>
+            <td style="background-color:#74a76b;padding:24px 32px;text-align:left;">
+              <span style="font-size:22px;font-weight:700;color:#f9f5ec;letter-spacing:0.4px;">DaurTani</span>
+              <p style="margin:4px 0 0 0;font-size:12px;color:#f9f5ec;opacity:0.9;">Ekosistem Sirkular Limbah Pertanian Indonesia</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px;">
+              <h1 style="margin:0 0 12px 0;font-size:22px;font-weight:700;color:#1e1e1e;">Pembaruan Kata Sandi Akun</h1>
+              <p style="margin:0 0 16px 0;font-size:14px;line-height:1.6;color:#1e1e1e;">
+                Halo <strong>${safeName}</strong>,
+              </p>
+              <p style="margin:0 0 20px 0;font-size:14px;line-height:1.6;color:#333333;">
+                Kata sandi untuk akun DaurTani Anda telah berhasil diatur ulang oleh tim Administrator DaurTani atas permohonan bantuan pemulihan akses akun Anda.
+              </p>
+              <div style="background-color:#f4f9f2;border:1px dashed #74a76b;border-radius:12px;padding:18px 24px;margin-bottom:24px;text-align:center;">
+                <p style="margin:0 0 6px 0;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:#74a76b;">Kata Sandi Baru Anda</p>
+                <div style="font-family:Consolas,monaco,monospace;font-size:20px;font-weight:700;letter-spacing:1px;color:#1e1e1e;user-select:all;">${safePassword}</div>
+              </div>
+              <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 24px 0;">
+                <tr>
+                  <td align="center" style="border-radius:10px;background-color:#74a76b;">
+                    <a href="${targetLoginUrl}" target="_blank" style="display:inline-block;padding:14px 28px;font-size:14px;font-weight:700;color:#f9f5ec;text-decoration:none;border-radius:10px;">
+                      Masuk ke Akun Sekarang
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="margin:0 0 8px 0;font-size:12px;line-height:1.5;color:#555555;">
+                Tautan masuk: <a href="${targetLoginUrl}" style="color:#74a76b;text-decoration:underline;">${targetLoginUrl}</a>
+              </p>
+              <hr style="border:none;border-top:1px solid #e8e2d5;margin:24px 0;" />
+              <p style="margin:0;font-size:12px;line-height:1.5;color:#666666;">
+                <strong>Saran Keamanan:</strong> Demi menjaga keamanan akun Anda, silakan segera perbarui kata sandi Anda ke kata sandi pribadi melalui menu Pengaturan Profil setelah berhasil masuk.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  await sendMailjetEmail({
+    toEmail,
+    toName: fullName,
+    subject,
+    textPart,
+    htmlPart,
+  });
+};
+

@@ -66,7 +66,7 @@ const getEncryptionKey = (): Buffer => {
   return crypto.createHash("sha256").update(secretSource).digest();
 };
 
-const encryptSyncSecret = (plainText: string): string => {
+export const encryptSyncSecret = (plainText: string): string => {
   const iv = crypto.randomBytes(12);
   const key = getEncryptionKey();
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
@@ -80,7 +80,7 @@ const encryptSyncSecret = (plainText: string): string => {
   )}`;
 };
 
-const decryptSyncSecret = (cipherText?: string | null): string | null => {
+export const decryptSyncSecret = (cipherText?: string | null): string | null => {
   if (!cipherText) return null;
   try {
     const parts = cipherText.split(":");
@@ -147,7 +147,7 @@ const getCallbackUrl = (req: Request): string => {
   );
 };
 
-const obtainUserSupabaseSession = async (
+export const obtainUserSupabaseSession = async (
   user: IUser | any,
   knownPassword?: string
 ): Promise<{

@@ -18,6 +18,7 @@ router.patch("/transactions/:orderId/status", adminController.updateTransactionS
 // Users management
 router.get("/users", adminController.getAllUsers);
 router.get("/users/:id", adminController.getUserDetail);
+router.post("/users/:id/reset-password", adminController.resetUserPasswordByAdmin);
 
 // Stores management
 router.get("/stores", adminController.getAllStores);
