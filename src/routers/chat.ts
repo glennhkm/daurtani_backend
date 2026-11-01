@@ -4,13 +4,14 @@ import OpenAI from "openai";
 import "dotenv/config";
 import { embedQuery } from "../libs/services/productVectorSearch/embedding";
 import { searchProductsCore } from "../libs/services/productVectorSearch/core";
+import { FarmWaste } from "../models/farmWasteModel";
 
 const chatRouter = Router();
 
-// ====== Heuristik intent sederhana ======
+// ====== Heuristik intent rekomendasi produk ======
 function wantsRecommendations(text: string) {
   const t = (text || "").toLowerCase();
-  return /(sapi|kambing|ayam|ternak|pakan|kompos|biogas|beli|jual|produk|rekomendasi|limbah|sekam|ampas|kulit singkong|padi|batok|kelapa|tempurung|briket|arang|shisha|karbon|serabut|sabut|cocopeat|jerami|tongkol|jagung|tebu|sawit|pupuk|media tanam|kalori|abu|stok|harga|aceh|toko|cari|butuh)/.test(
+  return /(sapi|kambing|ayam|ternak|pakan|kompos|biogas|beli|jual|produk|rekomendasi|limbah|sekam|ampas|kulit singkong|padi|batok|kelapa|tempurung|briket|arang|shisha|karbon|serabut|sabut|cocopeat|jerami|tongkol|jagung|tebu|sawit|pupuk|media tanam|kalori|abu|stok|harga|aceh|toko|cari|butuh|kopi|kulit kopi|pisang|batang pisang|tani|order|pesan|supplier|katalog|bahan)/.test(
     t
   );
 }
@@ -103,24 +104,73 @@ chatRouter.post("/", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // ==== Phase 1: embed ====
+    // ==== Phase 1: embed via OpenRouter ====
+    let qVector: number[] = [];
     const t0 = Date.now();
-    const qVector = await embedQuery(last);
-    const t1 = Date.now();
-    console.log(`[recs][${rid}] embed.ok | dim=${qVector.length} | ${t1 - t0}ms`);
+    try {
+      qVector = await embedQuery(last);
+      const t1 = Date.now();
+      console.log(`[recs][${rid}] embed.ok | dim=${qVector.length} | ${t1 - t0}ms`);
+    } catch (embedErr: any) {
+      console.warn(`[recs][${rid}] embed.failed (${embedErr?.message || embedErr}). Falling back to keyword search.`);
+    }
 
     // ==== Phase 2: vector search (anti-halusinasi: semua dari DB) ====
     const cfg = { limit: 3, numCandidates: 150, minScore: 0.3 };
-    const productsRaw = await searchProductsCore({
-      qVector,
-      ...cfg,
-    });
-    const t2 = Date.now();
+    let productsRaw: any[] = [];
 
-    console.log(
-      `[recs][${rid}] search.ok | items=${productsRaw.length
-      } | bestScore=${productsRaw[0]?.score?.toFixed?.(4) ?? "n/a"} | ${t2 - t1}ms`
-    );
+    if (qVector && qVector.length > 0) {
+      productsRaw = await searchProductsCore({
+        qVector,
+        ...cfg,
+      });
+      const t2 = Date.now();
+      console.log(
+        `[recs][${rid}] vectorSearch.ok | items=${productsRaw.length
+        } | bestScore=${productsRaw[0]?.score?.toFixed?.(4) ?? "n/a"} | ${t2 - t0}ms`
+      );
+    }
+
+    // Fallback search jika vector search tidak menghasilkan produk atau embedding gagal
+    if (!productsRaw || productsRaw.length === 0) {
+      const keywords = last
+        .toLowerCase()
+        .replace(/[^\w\s]/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length >= 3);
+
+      if (keywords.length > 0) {
+        const regexList = keywords.map((k) => new RegExp(k, "i"));
+        const fallbackDocs = await FarmWaste.find({
+          isDeleted: { $ne: true },
+          $or: [
+            { wasteName: { $in: regexList } },
+            { tags: { $in: regexList } },
+            { species: { $in: regexList } },
+            { use_cases: { $in: regexList } },
+            { description: { $in: regexList } },
+          ],
+        })
+          .limit(cfg.limit)
+          .lean();
+
+        productsRaw = fallbackDocs.map((p: any) => ({
+          id: p._id,
+          title: p.wasteName,
+          short_desc: p.description,
+          slug: p.slug,
+          url: `/marketplace/product/${p.slug}`,
+          image: p.imageUrls?.length > 0 ? p.imageUrls[0] : null,
+          rating: p.averageRating ?? null,
+          stock: p.stock ?? null,
+          score: 0.5,
+          badges: [
+            ...(p.species?.length ? [`Cocok untuk ${p.species.join(", ")}`] : []),
+            ...(p.use_cases?.length ? p.use_cases : []),
+          ],
+        }));
+      }
+    }
 
     const products = (productsRaw || [])
       .map(mapProductForClient)

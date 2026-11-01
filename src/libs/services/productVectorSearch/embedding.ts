@@ -1,118 +1,111 @@
+import "dotenv/config";
+
+export const EMBEDDING_MODEL =
+  process.env.EDEN_EMBED_MODEL || "infomaniak/mini_lm_l12_v2";
+export const EMBEDDING_DIMENSION = 384;
+
+const EDEN_API_URL = "https://api.edenai.run/v3/embeddings";
+
 /**
- * Environment:
- *   HF_TOKEN=hf_...
- *   HF_EMBED_MODEL=intfloat/multilingual-e5-large (default)
- *   HF_PROVIDER=hf-inference  (RECOMMENDED; don't use "auto")
+ * Truncate teks agar tidak melebihi batasan 128 token infomaniak mini_lm_l12_v2
+ * (Bahasa Indonesia dengan subword tokenization aman di rentang <= 280 karakter)
  */
-const HF_TOKEN = process.env.HF_TOKEN!;
-if (!HF_TOKEN) throw new Error("HF_TOKEN is required in .env");
+function sanitizeInput(text: string): string {
+  const trimmed = (text || "").replace(/\s+/g, " ").trim();
+  if (trimmed.length <= 280) return trimmed;
+  const sliced = trimmed.slice(0, 280);
+  const lastSpace = sliced.lastIndexOf(" ");
+  return lastSpace > 150 ? sliced.slice(0, lastSpace) : sliced;
+}
 
-const HF_EMBED_MODEL =
-  process.env.HF_EMBED_MODEL || "intfloat/multilingual-e5-large";
-
-// Force a concrete provider so router knows where to send the call.
-// If you *really* want auto, set HF_PROVIDER=auto and configure providers order in HF settings.
-// But for reliability, keep hf-inference.
-const HF_PROVIDER = process.env.HF_PROVIDER || "hf-inference";
-
-// Router endpoint for feature-extraction
-// Docs pattern:
-//   https://router.huggingface.co/{provider}/models/{model}/pipeline/feature-extraction
-const ENDPOINT = `https://router.huggingface.co/${HF_PROVIDER}/models/${HF_EMBED_MODEL}/pipeline/feature-extraction`;
-
-/* ---------------- Utils ---------------- */
-function meanPool(matrix: number[][]): number[] {
-  const rows = matrix.length;
-  const cols = matrix[0].length;
-  const out = new Array(cols).fill(0);
-  for (let r = 0; r < rows; r++) {
-    const row = matrix[r];
-    for (let c = 0; c < cols; c++) out[c] += row[c];
+/**
+ * Panggilan embedding ke Eden AI (https://api.edenai.run/v3/embeddings)
+ * Model: infomaniak/mini_lm_l12_v2 (384 dimensi, free tier)
+ */
+async function callEdenAI(input: string | string[]): Promise<number[][]> {
+  const apiKey = process.env.EDEN_API_KEY;
+  if (!apiKey) {
+    throw new Error("EDEN_API_KEY is not configured in .env");
   }
-  for (let c = 0; c < cols; c++) out[c] /= rows;
-  return out;
-}
 
-function l2Normalize(vec: number[]): number[] {
-  const norm = Math.sqrt(vec.reduce((s, x) => s + x * x, 0)) || 1;
-  return vec.map((x) => x / norm);
-}
+  const safeInput = Array.isArray(input)
+    ? input.map(sanitizeInput).filter(Boolean)
+    : sanitizeInput(input);
 
-async function fetchWithRetry(body: any, attempt = 0): Promise<any> {
-  const res = await fetch(ENDPOINT, {
+  if (Array.isArray(safeInput) && safeInput.length === 0) return [];
+  if (typeof safeInput === "string" && !safeInput) return [];
+
+  const res = await fetch(EDEN_API_URL, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${HF_TOKEN}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      model: EMBEDDING_MODEL,
+      input: safeInput,
+    }),
   });
 
-  // backoff on 429/5xx
-  if ((res.status === 429 || res.status >= 500) && attempt < 3) {
-    const backoff = 600 * Math.pow(2, attempt); // 600ms, 1.2s, 2.4s
-    await new Promise((r) => setTimeout(r, backoff));
-    return fetchWithRetry(body, attempt + 1);
+  const json: any = await res.json().catch(() => ({}));
+
+  if (!res.ok || json.error) {
+    const errMsg =
+      json?.error?.message ||
+      json?.detail ||
+      `Eden AI HTTP error ${res.status}`;
+    const err: any = new Error(errMsg);
+    err.status = res.status;
+    err.code = json?.error?.code || json?.error?.type;
+    throw err;
   }
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`HF embedding failed: ${res.status} ${text.slice(0, 300)}`);
+  if (!json?.data || !Array.isArray(json.data)) {
+    throw new Error("Format respons Eden AI tidak valid (tidak ada array data).");
   }
-  return res.json();
+
+  return json.data.map((item: any) => {
+    const emb = item?.embedding;
+    if (Array.isArray(emb)) return emb.map(Number);
+    if (typeof emb === "string") return JSON.parse(emb).map(Number);
+    return [];
+  });
 }
 
-/* ---------------- Core single ---------------- */
 /**
- * E5 multilingual (1024-dim). MUST prefix:
- *   - type "query"   => "query: ..."
- *   - type "passage" => "passage: ..."
+ * Generate embedding tunggal menggunakan infomaniak/mini_lm_l12_v2 via Eden AI
  */
-export async function embedText(
-  text: string,
-  type: "query" | "passage" = "passage"
-): Promise<number[]> {
-  const prefixed = `${type}: ${(text || "").slice(0, 8000)}`;
-  const out = await fetchWithRetry({ inputs: prefixed });
+export async function embedText(text: string): Promise<number[]> {
+  const cleanText = (text || "").trim();
+  if (!cleanText) return [];
 
-  // out can be number[] (already pooled) OR number[][] (per-token)
-  let vec: number[];
-  if (Array.isArray(out[0])) {
-    vec = meanPool(out as number[][]);
-  } else {
-    vec = out as number[];
+  const results = await callEdenAI(cleanText);
+  const vector = results[0];
+
+  if (!Array.isArray(vector) || vector.length === 0) {
+    throw new Error("Empty embedding vector returned from Eden AI");
   }
-  if (!Array.isArray(vec) || vec.length === 0) throw new Error("Empty embedding result");
 
-  return l2Normalize(vec.map(Number));
+  return vector;
 }
 
-export const embedQuery = (q: string) => embedText(q, "query");
-export const embedDoc = (d: string) => embedText(d, "passage");
-
-/* ---------------- Batch (optional) ---------------- */
 /**
- * Batch embed (faster for backfill). Returns 1024-dim vectors per item.
+ * Alias untuk kompatibilitas pencarian
  */
-export async function embedBatch(
-  texts: string[],
-  type: "query" | "passage" = "passage"
-): Promise<number[][]> {
-  if (!texts?.length) return [];
-  const inputs = texts.map((t) => `${type}: ${(t || "").slice(0, 8000)}`);
-  const out = await fetchWithRetry({ inputs });
+export const embedQuery = (q: string): Promise<number[]> => embedText(q);
 
-  // Possible shapes:
-  // - number[][] (each item already [dim])
-  // - number[][][] (each item [seq_len, dim]) → need pooling
-  if (!Array.isArray(out)) throw new Error("Unexpected embedding batch output");
+/**
+ * Alias untuk embedding dokumen produk
+ */
+export const embedDoc = (d: string): Promise<number[]> => embedText(d);
 
-  const first = out[0];
-  const itemIsVector = Array.isArray(first) && typeof first[0] === "number";
+/**
+ * Batch embed array of texts (efisien untuk backfill dan bulk updates)
+ */
+export async function embedBatch(texts: string[]): Promise<number[][]> {
+  if (!texts || texts.length === 0) return [];
+  const cleanTexts = texts.map((t) => (t || "").trim()).filter(Boolean);
+  if (cleanTexts.length === 0) return [];
 
-  if (itemIsVector) {
-    return (out as number[][]).map((v) => l2Normalize(v.map(Number)));
-  }
-  // per-token → pool each
-  return (out as number[][][]).map((mat) => l2Normalize(meanPool(mat as number[][])));
+  return callEdenAI(cleanTexts);
 }

@@ -6,7 +6,11 @@ import { Store } from "../models/storeModel";
 import { FarmWaste } from "../models/farmWasteModel";
 import { UnitPrice } from "../models/unitPriceModel";
 import response from "../libs/utils/responses";
-import { embedText } from "../libs/services/productVectorSearch/embedding";
+import {
+  embedText,
+  embedDoc,
+  EMBEDDING_DIMENSION,
+} from "../libs/services/productVectorSearch/embedding";
 import {
   encryptSyncSecret,
   obtainUserSupabaseSession,
@@ -617,6 +621,28 @@ export const getStoreDetail = async (req: Request, res: Response) => {
 // PRODUCT MANAGEMENT & SOFT DELETE
 // ==========================================
 
+/**
+ * Standardized embedding text builder for farmwaste products
+ */
+export function buildProductEmbeddingBasis(doc: {
+  wasteName: string;
+  description?: string;
+  tags?: string[];
+  species?: string[];
+  use_cases?: string[];
+}): string {
+  return [
+    doc.wasteName || "",
+    doc.description || "",
+    ...(doc.tags || []),
+    ...(doc.species || []),
+    ...(doc.use_cases || []),
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
 // GET /admin/products - List all products with filter & search
 export const getAllProducts = async (req: Request, res: Response) => {
   try {
@@ -666,6 +692,10 @@ export const getAllProducts = async (req: Request, res: Response) => {
       const units = unitPrices.filter((u) => String(u.farmWasteId) === String(p._id));
       const baseUnit = units.find((u) => u.isBaseUnit) || units[0];
 
+      const hasVector =
+        Array.isArray(p.vector) && p.vector.length === EMBEDDING_DIMENSION;
+      const vectorDimensions = Array.isArray(p.vector) ? p.vector.length : 0;
+
       return {
         _id: p._id,
         wasteName: p.wasteName,
@@ -685,6 +715,8 @@ export const getAllProducts = async (req: Request, res: Response) => {
         unitPrices: units,
         basePrice: baseUnit?.pricePerUnit || 0,
         baseUnit: baseUnit?.unit || "Kg",
+        hasVector,
+        vectorDimensions,
       };
     });
 
@@ -723,9 +755,20 @@ export const getProductDetail = async (req: Request, res: Response) => {
       .sort({ createdAt: -1 })
       .populate("userId", "fullName email");
 
+    const hasVector =
+      Array.isArray(product.vector) &&
+      product.vector.length === EMBEDDING_DIMENSION;
+    const vectorDimensions = Array.isArray(product.vector)
+      ? product.vector.length
+      : 0;
+
     return response.sendSuccess(res, {
       data: {
-        product,
+        product: {
+          ...product.toObject(),
+          hasVector,
+          vectorDimensions,
+        },
         unitPrices,
         transactions,
         totalSoldQuantity: transactions.reduce((sum, t) => {
@@ -736,6 +779,8 @@ export const getProductDetail = async (req: Request, res: Response) => {
           const items = t.items.filter((i) => String(i.productId) === String(id));
           return sum + items.reduce((iSum, i) => iSum + (i.total || 0), 0);
         }, 0),
+        hasVector,
+        vectorDimensions,
       },
       message: "Detail produk berhasil diambil",
     });
@@ -853,30 +898,33 @@ export const updateProductByAdmin = async (req: Request, res: Response) => {
       product.deletedAt = isDeleted ? new Date() : null;
     }
 
-    // Regenerate vector embedding if semantic fields were provided
-    if (
+    // Regenerate vector embedding if semantic fields were provided OR if vector is missing/invalid dimension
+    const isVectorInvalid =
+      !Array.isArray(product.vector) ||
+      product.vector.length !== EMBEDDING_DIMENSION;
+    const semanticFieldsChanged =
       typeof wasteName === "string" ||
       typeof description === "string" ||
       Array.isArray(tags) ||
       Array.isArray(species) ||
-      Array.isArray(use_cases)
-    ) {
+      Array.isArray(use_cases);
+
+    if (semanticFieldsChanged || isVectorInvalid) {
       try {
-        const embeddingText = [
-          product.wasteName || "",
-          product.description || "",
-          ...(product.tags || []),
-          ...(product.species || []),
-          ...(product.use_cases || []),
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .replace(/\s+/g, " ")
-          .trim();
+        const embeddingText = buildProductEmbeddingBasis({
+          wasteName: product.wasteName,
+          description: product.description,
+          tags: product.tags,
+          species: product.species,
+          use_cases: product.use_cases,
+        });
 
         if (embeddingText) {
-          const newVector = await embedText(embeddingText);
-          if (Array.isArray(newVector) && newVector.length > 0) {
+          const newVector = await embedDoc(embeddingText);
+          if (
+            Array.isArray(newVector) &&
+            newVector.length === EMBEDDING_DIMENSION
+          ) {
             product.vector = newVector;
           }
         }
@@ -909,10 +957,19 @@ export const updateProductByAdmin = async (req: Request, res: Response) => {
     }
 
     const updatedUnits = await UnitPrice.find({ farmWasteId: id });
+    const hasVector =
+      Array.isArray(product.vector) &&
+      product.vector.length === EMBEDDING_DIMENSION;
 
     return response.sendSuccess(res, {
       data: {
-        product,
+        product: {
+          ...product.toObject(),
+          hasVector,
+          vectorDimensions: Array.isArray(product.vector)
+            ? product.vector.length
+            : 0,
+        },
         unitPrices: updatedUnits,
       },
       message: "Produk berhasil diperbarui oleh Administrator.",
@@ -920,6 +977,152 @@ export const updateProductByAdmin = async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error("updateProductByAdmin error:", err);
     return response.sendInternalError(res, err.message);
+  }
+};
+
+// POST /admin/products/:id/embed - On-demand generate embedding for single product
+export const embedProductByAdmin = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return response.sendBadRequest(res, "ID Produk tidak valid");
+    }
+
+    const product = await FarmWaste.findById(id);
+    if (!product) {
+      return response.sendNotFound(res, "Produk tidak ditemukan");
+    }
+
+    const embeddingText = buildProductEmbeddingBasis({
+      wasteName: product.wasteName,
+      description: product.description,
+      tags: product.tags,
+      species: product.species,
+      use_cases: product.use_cases,
+    });
+
+    if (!embeddingText) {
+      return response.sendBadRequest(res, "Produk tidak memiliki konten teks untuk di-embed");
+    }
+
+    const vector = await embedDoc(embeddingText);
+    if (!Array.isArray(vector) || vector.length !== EMBEDDING_DIMENSION) {
+      return response.sendInternalError(
+        res,
+        `Vektor yang dihasilkan tidak valid (dimensi ${vector?.length}, dibutuhkan ${EMBEDDING_DIMENSION})`
+      );
+    }
+
+    product.vector = vector;
+    product.updatedAt = new Date();
+    await product.save();
+
+    return response.sendSuccess(res, {
+      data: {
+        _id: product._id,
+        wasteName: product.wasteName,
+        slug: product.slug,
+        hasVector: true,
+        vectorDimensions: vector.length,
+      },
+      message: `AI Vector Embedding berhasil diperbarui (${vector.length} dimensi).`,
+    });
+  } catch (err: any) {
+    console.error("embedProductByAdmin error:", err);
+    return response.sendInternalError(
+      res,
+      err.message || "Gagal meng-generate embedding untuk produk ini."
+    );
+  }
+};
+
+// POST /admin/products/embed-missing - On-demand batch generate embedding for all products missing valid vector
+export const embedMissingProductsByAdmin = async (req: Request, res: Response) => {
+  try {
+    const query: any = {
+      isDeleted: { $ne: true },
+      $or: [
+        { vector: { $exists: false } },
+        { vector: { $size: 0 } },
+        { $expr: { $ne: [{ $size: { $ifNull: ["$vector", []] } }, EMBEDDING_DIMENSION] } },
+      ],
+    };
+
+    const productsToEmbed = await FarmWaste.find(query);
+    if (productsToEmbed.length === 0) {
+      return response.sendSuccess(res, {
+        data: {
+          total: 0,
+          succeeded: 0,
+          failed: 0,
+        },
+        message: "Semua produk aktif sudah memiliki AI Vector Embedding yang valid!",
+      });
+    }
+
+    let succeeded = 0;
+    let failed = 0;
+    const errors: Array<{ id: string; name: string; error: string }> = [];
+
+    for (const prod of productsToEmbed) {
+      const embeddingText = buildProductEmbeddingBasis({
+        wasteName: prod.wasteName,
+        description: prod.description,
+        tags: prod.tags,
+        species: prod.species,
+        use_cases: prod.use_cases,
+      });
+
+      if (!embeddingText) {
+        failed++;
+        errors.push({ id: String(prod._id), name: prod.wasteName, error: "Konten teks kosong" });
+        continue;
+      }
+
+      try {
+        const vector = await embedDoc(embeddingText);
+        if (Array.isArray(vector) && vector.length === EMBEDDING_DIMENSION) {
+          prod.vector = vector;
+          prod.updatedAt = new Date();
+          await prod.save();
+          succeeded++;
+        } else {
+          failed++;
+          errors.push({
+            id: String(prod._id),
+            name: prod.wasteName,
+            error: `Dimensi tidak cocok (${vector?.length})`,
+          });
+        }
+      } catch (embErr: any) {
+        failed++;
+        errors.push({
+          id: String(prod._id),
+          name: prod.wasteName,
+          error: embErr?.message || "Error saat embed",
+        });
+      }
+
+      // Delay kecil untuk mencegah rate-limiting
+      await new Promise((r) => setTimeout(r, 200));
+    }
+
+    return response.sendSuccess(res, {
+      data: {
+        total: productsToEmbed.length,
+        succeeded,
+        failed,
+        errors: errors.slice(0, 5),
+      },
+      message: `Proses sync embedding selesai: ${succeeded} berhasil, ${failed} gagal dari total ${productsToEmbed.length} produk.`,
+    });
+  } catch (err: any) {
+    console.error("embedMissingProductsByAdmin error:", err);
+    return response.sendInternalError(
+      res,
+      err.message || "Gagal memproses batch embedding produk."
+    );
   }
 };
 
@@ -937,6 +1140,8 @@ export default {
   getProductDetail,
   toggleProductSoftDelete,
   updateProductByAdmin,
+  embedProductByAdmin,
+  embedMissingProductsByAdmin,
 };
 
 
